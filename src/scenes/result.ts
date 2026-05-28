@@ -1,9 +1,10 @@
 import type { ResultData } from '../types';
 import { view } from '../core/canvas';
-import { state, resetRun } from '../game/state';
+import { state } from '../game/state';
 import { Profile } from '../game/profile';
 import { Daily } from '../game/daily';
 import { Owned, skin } from '../game/skins';
+import { CG } from '../core/cg';
 import { clamp, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { dimVoid } from './play';
@@ -16,9 +17,19 @@ interface ResultBar {
   val: string;
 }
 
-function startPlay(): void {
-  resetRun();
-  state.scene = 'play';
+/**
+ * `requestReplay` and `requestRevive` are injected by main.ts so the result
+ * screen can drive midgame interstitials / rewarded ads without importing
+ * the game loop module.
+ */
+let onReplayRequested: () => void = () => { /* injected by main.ts */ };
+export function setReplayHandler(fn: () => void): void {
+  onReplayRequested = fn;
+}
+
+let onReviveRequested: () => void = () => { /* injected by main.ts */ };
+export function setReviveHandler(fn: () => void): void {
+  onReviveRequested = fn;
 }
 
 export const Result = {
@@ -140,39 +151,72 @@ export const Result = {
       text('MISSION COMPLETE  ◎+' + Daily.g.reward,
         W / 2, by + (d.leveledUp ? 26 : 4), 14, '#9be35a', 700, 8);
     }
-    text(this.nextAction(), W / 2, H * 0.70, 14, '#9fb0e0', 600, 0);
-    const pw = W * 0.62;
-    const ph = 58;
-    const px = W / 2 - pw / 2;
-    const py = H * 0.76;
+    const G = state.G;
+    const canRevive = !G.revivedThisRun;
     const sk = skin();
-    rr(px, py, pw, ph, 14);
-    ctx.fillStyle = sk.c;
-    ctx.shadowColor = sk.c;
-    ctx.shadowBlur = 20;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    text('PLAY AGAIN', W / 2, py + ph / 2, 20, '#04030a', 800, 0, 'center', "'Unbounded'");
-    btn('replay', px, py, pw, ph, () => startPlay());
+    const pw = W * 0.62;
+    const px = W / 2 - pw / 2;
     const half = (pw - 12) / 2;
-    rr(px, py + ph + 12, half, 46, 12);
+
+    text(this.nextAction(), W / 2, canRevive ? H * 0.60 : H * 0.70, 14, '#9fb0e0', 600, 0);
+
+    let py = canRevive ? H * 0.635 : H * 0.76;
+
+    if (canRevive) {
+      const ch = 54;
+      rr(px, py, pw, ch, 14);
+      ctx.fillStyle = '#9be35a';
+      ctx.shadowColor = '#9be35a';
+      ctx.shadowBlur = 22;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      text('CONTINUE', W / 2, py + ch / 2 - 7, 18, '#04130a', 800, 0, 'center', "'Unbounded'");
+      text(CG.ready ? 'WATCH AD TO REVIVE' : 'ONE FREE CONTINUE',
+        W / 2, py + ch / 2 + 12, 9.5, '#06200c', 700, 0);
+      btn('revive', px, py, pw, ch, () => onReviveRequested());
+      py += ch + 9;
+    }
+
+    {
+      const ph = canRevive ? 48 : 58;
+      rr(px, py, pw, ph, 14);
+      if (canRevive) {
+        ctx.fillStyle = 'rgba(20,16,48,.85)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,.18)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = sk.c;
+        ctx.shadowColor = sk.c;
+        ctx.shadowBlur = 20;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      text('PLAY AGAIN', W / 2, py + ph / 2,
+        canRevive ? 17 : 20, canRevive ? '#eaf6ff' : '#04030a', 800, 0, 'center', "'Unbounded'");
+      btn('replay', px, py, pw, ph, () => onReplayRequested());
+      py += ph + 12;
+    }
+
+    rr(px, py, half, 46, 12);
     ctx.fillStyle = 'rgba(20,16,48,.7)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.12)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    text('COLLECTION', px + half / 2, py + ph + 12 + 23, 13, sk.t, 700, 0);
-    btn('rshop', px, py + ph + 12, half, 46, () => {
+    text('COLLECTION', px + half / 2, py + 23, 13, sk.t, 700, 0);
+    btn('rshop', px, py, half, 46, () => {
       state.scene = 'shop';
     });
-    rr(px + half + 12, py + ph + 12, half, 46, 12);
+    rr(px + half + 12, py, half, 46, 12);
     ctx.fillStyle = 'rgba(20,16,48,.7)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.12)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    text('MENU', px + half + 12 + half / 2, py + ph + 12 + 23, 13, '#9fb0e0', 700, 0);
-    btn('rmenu', px + half + 12, py + ph + 12, half, 46, () => {
+    text('MENU', px + half + 12 + half / 2, py + 23, 13, '#9fb0e0', 700, 0);
+    btn('rmenu', px + half + 12, py, half, 46, () => {
       state.scene = 'home';
     });
   },

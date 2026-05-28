@@ -1,6 +1,6 @@
 export type Scene = 'home' | 'play' | 'over' | 'shop';
 
-export type NodeType = 'normal' | 'small' | 'bonus' | 'move';
+export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike';
 
 export interface Node {
   wx: number;
@@ -55,6 +55,14 @@ export interface Toast {
   c: string;
 }
 
+/** Run-segment high-water marks. bankRun() awards deltas against these so a
+ *  rewarded revive continues the SAME run without ever double-counting. */
+export interface BankedHwm {
+  h: number;
+  perf: number;
+  mc: number;
+}
+
 export interface GameState {
   t: number;
   cameraY: number;
@@ -83,6 +91,9 @@ export interface GameState {
   tutT: number;
   player: Player;
   _sweetTick?: number;
+  revivedThisRun: boolean;
+  dailyRunCounted: boolean;
+  banked: BankedHwm;
 }
 
 export interface Skin {

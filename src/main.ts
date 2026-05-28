@@ -1,14 +1,15 @@
 import './style.css';
 
 import { initCanvas, resize, view } from './core/canvas';
-import { state } from './game/state';
-import { update, release } from './game/update';
+import { state, resetRun } from './game/state';
+import { update, release, requestRevive } from './game/update';
 import { P, Pop, shakeState, updateShake } from './core/particles';
-import { Result } from './scenes/result';
-import { renderHome } from './scenes/home';
+import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
+import { renderHome, setPlayHandler } from './scenes/home';
 import { renderPlay } from './scenes/play';
 import { renderShop } from './scenes/shop';
 import { ac } from './core/audio';
+import { CG } from './core/cg';
 import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
 import { rand, text } from './core/utils';
@@ -19,12 +20,56 @@ resize();
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 80));
 
+/* ---------- play / replay / revive flow ---------- */
+let paused = false;
+
+function startPlay(): void {
+  resetRun();
+  state.scene = 'play';
+  CG.gameplayStart();
+}
+
+let replayCount = 0;
+function requestReplay(): void {
+  replayCount++;
+  // Every 3rd replay shows a midgame interstitial. When the SDK is unavailable
+  // (off-platform), CG.midgame fires `done` immediately.
+  if (CG.ready && replayCount % 3 === 0) CG.midgame(startPlay);
+  else startPlay();
+}
+
+setPlayHandler(startPlay);
+setReplayHandler(requestReplay);
+setReviveHandler(requestRevive);
+
+// Ad lifecycle pauses the game loop so updates don't run behind the overlay.
+CG.bindPauseHook((p) => {
+  paused = p;
+  if (!paused) {
+    last = performance.now();
+    acc = 0;
+  }
+});
+
 /* ---------- input ---------- */
 let inputLock = false;
 
 function pos(e: PointerEvent): { x: number; y: number } {
   const r = view.cv.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function primaryAction(): void {
+  // context-sensitive primary action for keyboard play
+  if (state.scene === 'play') {
+    if (!state.G.dead) release();
+  } else if (state.scene === 'over') {
+    requestReplay();
+  } else if (state.scene === 'home') {
+    startPlay();
+  } else if (state.scene === 'shop') {
+    state.scene = 'home';
+  }
 }
 
 function onDown(e: PointerEvent): void {
@@ -45,13 +90,24 @@ view.cv.addEventListener('pointerdown', onDown, { passive: false });
 view.cv.addEventListener('pointercancel', () => { inputLock = false; }, { passive: false });
 view.cv.addEventListener('contextmenu', (e) => e.preventDefault());
 
+// Desktop keyboard (CrazyGames has heavy desktop traffic): Space / Enter / ArrowUp
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    ac();
+    if (inputLock) return;
+    inputLock = true;
+    setTimeout(() => { inputLock = false; }, 40);
+    primaryAction();
+  }
+}, { passive: false });
+
 /* ---------- loop ---------- */
 const FIXED = 1 / 60;
 const MAX_STEPS = 5;
 
 let last = 0;
 let loopStarted = false;
-let paused = false;
 let acc = 0;
 let fpsT = 0;
 let fpsN = 0;
@@ -122,7 +178,8 @@ function frame(now: number): void {
     }
   }
   if (DEBUG) {
-    text('fps ' + fps + '  fx ' + fx.level + '  p ' + P.a.length,
+    const nLen = state.G?.nodes.length ?? 0;
+    text('fps ' + fps + '  fx ' + fx.level + '  p ' + P.a.length + '  n ' + nLen,
       8, H - 12, 11, '#5b6488', 600, 0, 'left');
   }
 }
@@ -135,6 +192,8 @@ function startLoop(): void {
 }
 
 document.addEventListener('visibilitychange', () => {
+  // Don't override the ad-pause hook — only react to tab visibility when no ad is active.
+  if (CG.adActive) return;
   paused = document.hidden;
   if (!paused) {
     last = performance.now();
@@ -144,7 +203,9 @@ document.addEventListener('visibilitychange', () => {
 
 window.addEventListener('load', () => {
   resize();
+  void CG.init();
   startLoop();
 });
 
+void CG.init();
 startLoop();

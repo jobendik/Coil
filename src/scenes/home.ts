@@ -7,11 +7,10 @@ import { TAU, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { drawBG, drawTopToggles } from './play';
 import { MILESTONES, SKINS } from '../config';
-import { resetRun } from '../game/state';
 
-function startPlay(): void {
-  resetRun();
-  state.scene = 'play';
+let onPlayRequested: () => void = () => { /* injected by main.ts */ };
+export function setPlayHandler(fn: () => void): void {
+  onPlayRequested = fn;
 }
 
 function nextGoalLine(): string {
@@ -151,7 +150,7 @@ export function renderHome(dt: number): void {
   ctx.fill();
   ctx.restore();
   text('PLAY', W / 2, pyy + ph / 2, 22, '#04030a', 800, 0, 'center', "'Unbounded'");
-  btn('play', pxx, pyy, pw, ph, () => startPlay());
+  btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
 
   const sw = W * 0.62;
   const sh = 46;
