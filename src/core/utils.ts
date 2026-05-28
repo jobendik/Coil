@@ -7,6 +7,14 @@ export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 export const rand = (a: number, b: number): number => a + Math.random() * (b - a);
 
+/** "#rrggbb" (or "#rgb") + alpha → "rgba(...)". Used for glow/void/world tints. */
+export function hexA(hex: string, a: number): string {
+  let h = (hex || '#fff').replace('#', '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  const n = parseInt(h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
 export function angDiff(a: number, b: number): number {
   let d = (a - b) % TAU;
   if (d > Math.PI) d -= TAU;

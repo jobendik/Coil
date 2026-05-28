@@ -1,22 +1,28 @@
-import type { Node, ResultData } from '../types';
+import type { AchSummary, DailyMedal, Node, ResultData } from '../types';
 import { view } from '../core/canvas';
 import { state, sY } from './state';
 import { genNode } from './nodes';
 import { computeSweetZone } from './physics';
 import { P, Pop, shake } from '../core/particles';
-import { SFX } from '../core/audio';
+import { SFX, bigWinAudio, cheerSwell, cymbal } from '../core/audio';
+import { Callout, Coins, Confetti, Flash, FlyCoins, Rays, Shock, Sparkles, bankXY } from '../core/fx';
 import { buzz } from '../core/haptics';
 import { settings, setSeenTut } from '../settings';
 import { skin } from './skins';
 import { Profile } from './profile';
 import { Daily } from './daily';
 import { Scores } from './scores';
+import { Vault } from './vault';
+import { Achievements } from './achievements';
+import { DailyRun } from './dailyrun';
 import { CG } from '../core/cg';
 import { Result } from '../scenes/result';
 import {
   CATCH_PAD,
   COMBO_TIERS,
   DEATH_ANIM,
+  FRENZY_COIN_MULT,
+  FRENZY_TIME,
   G_FALL,
   LAUNCH,
   MILE_REWARD,
@@ -24,6 +30,9 @@ import {
   NEAR_MISS_RADIUS,
   OMEGA,
   ORBIT,
+  OVERDRIVE_BASE,
+  OVERDRIVE_PER_COMBO,
+  VAULT_WIN_COMBO,
   WALL,
   ZONES,
 } from '../config';
@@ -34,6 +43,33 @@ export function update(dt: number): void {
   const G = state.G;
   const pl = G.player;
   const { W, H } = view;
+
+  // anticipation freeze — hold the world for a beat after a huge event for impact
+  if (G.freezeT > 0) {
+    G.freezeT -= dt;
+    if (G.freezeT > 0) return;
+  }
+  Vault.tick(dt);
+  // FRENZY countdown — banks a top-up bonus with fanfare when it ends
+  if (G.frenzyT > 0) {
+    G.frenzyT -= dt;
+    if (G.frenzyT <= 0) {
+      G.frenzyT = 0;
+      const bonus = Math.max(20, Math.round(G.frenzyBanked * 0.5));
+      G.coins += bonus;
+      Callout.add('FRENZY BONUS  +' + bonus + ' ◎', '#ffd24a', false);
+      cymbal(0.4);
+      SFX.chaching();
+      Confetti.burst(W / 2, H * 0.4, 24);
+    }
+  }
+  // honest near-miss-to-best toast (once per run, only when genuinely close)
+  if (!G.bestNearShown && Profile.best > 0 && !G.beatBest
+      && Profile.best - G.height > 0 && Profile.best - G.height < 40) {
+    G.bestNearShown = true;
+    Callout.add('SO CLOSE TO YOUR BEST', '#ffb020', false);
+    buzz(15);
+  }
 
   if (G.invuln > 0) G.invuln -= dt;
   if (pl.zap > 0) pl.zap -= dt;
@@ -111,17 +147,51 @@ export function update(dt: number): void {
 
   if (!G.beatBest && Profile.best > 0 && G.height > Profile.best) {
     G.beatBest = true;
-    G.toast = { txt: 'NEW BEST!', t: 1.6, c: '#9be35a' };
-    SFX.milestone();
+    Callout.add('NEW BEST!', '#9be35a', true);
+    SFX.riser(0.45);
+    bigWinAudio(1.0);
+    cymbal(0.5);
+    cheerSwell(0.6, 0.18);
+    Confetti.rain(60);
+    Flash.hit('#9be35a', 0.4);
+    shake(7, 0.35);
+    buzz([30, 30, 80]);
+    const bx = pl.wx;
+    const by = sY(pl.wy);
+    Shock.ring(bx, by, '#9be35a', { r0: 16, r1: Math.max(W, H) * 0.9, lw: 6, life: 0.65 });
+    Sparkles.scatter(20, '#9be35a');
+    CG.happy();
+    G.freezeT = 0.22;
   }
   while (G.nextMilestone < MILESTONES.length && G.height >= MILESTONES[G.nextMilestone]) {
     const m = MILESTONES[G.nextMilestone];
     G.nextMilestone++;
     const rw = (MILE_REWARD[m] || 10) * G.coinMult;
-    G.toast = { txt: m + ' M', t: 1.4, c: '#fff' };
     G.coins += rw;
-    SFX.milestone();
-    shake(2, 0.12);
+    const big = m >= 500;
+    Callout.add(m + ' M  +' + rw + ' ◎', '#fff', big);
+    const b = bankXY();
+    if (big) {
+      Confetti.rain(50);
+      Coins.spawn(W / 2, H * 0.4, 20, { fountain: true, up: 100 });
+      Flash.hit('#ffd24a', 0.3);
+      shake(5, 0.22);
+      buzz([20, 20, 60]);
+      Shock.ring(W / 2, H * 0.4, '#ffd24a', { r0: 20, r1: W * 0.95, lw: 6, life: 0.6 });
+      Sparkles.scatter(16, '#ffd24a');
+      FlyCoins.send(W / 2, H * 0.4, Math.min(12, rw), b.x, b.y);
+      bigWinAudio(0.8);
+      cymbal(0.45);
+      G.freezeT = 0.18;
+    } else {
+      Confetti.burst(W / 2, H * 0.4, 14);
+      Coins.spawn(W / 2, H * 0.4, 7, { fountain: true, up: 70 });
+      Shock.ring(W / 2, H * 0.4, '#fff', { r0: 16, r1: W * 0.6, lw: 4, life: 0.5 });
+      FlyCoins.send(W / 2, H * 0.4, Math.min(8, rw), b.x, b.y);
+      shake(3, 0.14);
+      buzz(25);
+      SFX.milestone();
+    }
     CG.happy();
   }
   let z = 0;
@@ -157,13 +227,19 @@ export function update(dt: number): void {
         G.shield = true;
         SFX.shield();
         P.ring(s.wx, sY(s.wy), '#9ffff2', 16, 200);
+        Rays.burst(s.wx, sY(s.wy), '#9ffff2', 10);
         Pop.add(s.wx, sY(s.wy), 'SHIELD', '#9ffff2');
       } else {
-        const got = 2 * G.coinMult;
+        const got = 2 * G.coinMult * (G.frenzyT > 0 ? FRENZY_COIN_MULT : 1);
         G.coins += got;
-        SFX.coin();
-        P.burst(s.wx, sY(s.wy), 6, '#ffe39b', 160, 0.4, 3);
+        if (G.frenzyT > 0) G.frenzyBanked += got;
+        SFX.chaching();
+        P.burst(s.wx, sY(s.wy), 5, '#ffe39b', 160, 0.4, 3);
+        Coins.spawn(s.wx, sY(s.wy), 5, { up: 60 });
+        Shock.ring(s.wx, sY(s.wy), '#ffe39b', { r0: 6, r1: 42, lw: 2.5, life: 0.4 });
         Pop.add(s.wx, sY(s.wy), '+' + got, skin().t);
+        const b = bankXY();
+        FlyCoins.send(s.wx, sY(s.wy), 3, b.x, b.y);
       }
     }
   }
@@ -192,6 +268,7 @@ export function update(dt: number): void {
 export function latch(n: Node, _d: number, dx: number, dy: number): void {
   const G = state.G;
   const pl = G.player;
+  const { W, H } = view;
   pl.latched = true;
   pl.node = n;
   pl.ang = Math.atan2(dy, dx);
@@ -201,11 +278,45 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
   SFX.catch(G.combo);
   P.burst(n.wx, sY(n.wy), 8, skin().c, 140, 0.35, 3.5);
   if (n.type === 'bonus') {
-    const g = 25 * G.coinMult;
-    G.coins += g;
-    SFX.bonus();
-    P.ring(n.wx, sY(n.wy), '#ffd24a', 20, 300);
-    Pop.add(n.wx, sY(n.wy) - 16, '+' + g + ' ◎', '#ffd24a');
+    const cx = n.wx;
+    const cy = sY(n.wy);
+    // STAR VAULT: catch a bonus node while on a high combo to claim the whole pot.
+    // Rare, skill-only — never a paid chance.
+    if (G.combo >= VAULT_WIN_COMBO && !G.jackpotHit) {
+      G.jackpotHit = true;
+      const won = Vault.win();
+      G.potWon = won;
+      G.coins += won;
+      Callout.add('STAR VAULT!  +' + won + ' ◎', '#ffd24a', true);
+      SFX.riser(0.5);
+      bigWinAudio(1.4);
+      cymbal(0.6);
+      cheerSwell(0.9, 0.22);
+      Coins.spawn(cx, cy, 46, { fountain: true, up: 220 });
+      Confetti.rain(90);
+      Rays.burst(cx, cy, '#ffd24a', 26);
+      Shock.ring(cx, cy, '#ffd24a', { r0: 20, r1: Math.max(W, H), lw: 8, life: 0.7, fill: true });
+      Sparkles.scatter(28, '#ffd24a');
+      FlyCoins.send(cx, cy, 16, bankXY().x, bankXY().y);
+      Flash.hit('#ffd24a', 0.6);
+      shake(14, 0.55);
+      buzz([60, 40, 60, 40, 120]);
+      CG.happy();
+      G.freezeT = 0.3;
+    } else {
+      const g = 25 * G.coinMult * (G.frenzyT > 0 ? FRENZY_COIN_MULT : 1);
+      G.coins += g;
+      if (G.frenzyT > 0) G.frenzyBanked += g;
+      SFX.bonus();
+      SFX.coinCascade(4);
+      P.ring(cx, cy, '#ffd24a', 20, 300);
+      Coins.spawn(cx, cy, 7, { fountain: true, up: 90 });
+      Rays.burst(cx, cy, '#ffd24a', 8);
+      Shock.ring(cx, cy, '#ffd24a', { r0: n.r, r1: 92, lw: 4, life: 0.45 });
+      FlyCoins.send(cx, cy, 8, bankXY().x, bankXY().y);
+      Pop.add(cx, cy - 16, '+' + g + ' ◎', '#ffd24a');
+      shake(2.5, 0.12);
+    }
     n.type = 'normal';
     n.r = 18;
   }
@@ -220,6 +331,7 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
 export function release(): void {
   const G = state.G;
   const pl = G.player;
+  const { W, H } = view;
   if (!pl.latched) return;
   G.flings++;
   const tx = -Math.sin(pl.ang) * pl.dir;
@@ -236,40 +348,74 @@ export function release(): void {
   const sw = G.sweet;
   const insideGate = !!sw && sw.reachable && angDiff(pl.ang, sw.center) <= sw.tol;
   const isPerfect = insideGate || G.firstFlingPending;
+  const fMul = G.frenzyT > 0 ? FRENZY_COIN_MULT : 1;
   if (isPerfect) {
     G.perfects++;
     G.combo = Math.min(12, G.combo + 1);
     G.maxCombo = Math.max(G.maxCombo, G.combo);
-    const gain = Math.round(3 * G.combo) * G.coinMult;
+    G.overdrive = clamp(G.overdrive + OVERDRIVE_BASE + G.combo * OVERDRIVE_PER_COMBO, 0, 1);
+    const gain = Math.round(3 * G.combo) * G.coinMult * fMul;
     G.coins += gain;
+    if (G.frenzyT > 0) G.frenzyBanked += gain;
+    const sx = pl.wx;
+    const sy = sY(pl.wy);
     SFX.perfect(G.combo);
     buzz(8);
-    P.ring(pl.wx, sY(pl.wy), '#fff', 22, 330);
-    P.burst(pl.wx, sY(pl.wy), 10, skin().t, 260, 0.5, 4);
+    P.ring(sx, sy, '#fff', 22, 330);
+    P.burst(sx, sy, 10, skin().t, 260, 0.5, 4);
     if (G.firstFlingPending) {
-      Pop.add(pl.wx, sY(pl.wy) - 18, 'FIRST! PERFECT', '#fff');
+      Pop.add(sx, sy - 18, 'FIRST! PERFECT', '#fff');
     } else {
-      Pop.add(pl.wx, sY(pl.wy) - 18, `PERFECT x${G.combo}`, '#fff');
+      Pop.add(sx, sy - 18, `PERFECT x${G.combo}`, '#fff');
     }
     shake(2.5, 0.12);
     pl.zap = 0.25;
+    // shock ring scales with the chain so a long combo visibly hits harder
+    Shock.ring(sx, sy, G.combo >= 8 ? '#ffd24a' : skin().c, { r0: pl.r, r1: 50 + G.combo * 8, lw: 3 + G.combo * 0.3, life: 0.42 });
+    // a few coins fly to the balance — the satisfying "deposit"
+    FlyCoins.send(sx, sy, Math.min(9, 2 + Math.floor(G.combo * 0.6)), bankXY().x, bankXY().y);
     // Combo milestone fireworks — escalate the dopamine at x3/x5/x8/x12.
     for (let i = COMBO_TIERS.length - 1; i >= 0; i--) {
       const tier = COMBO_TIERS[i];
       if (G.combo >= tier.at && G.comboTierReached < i) {
         G.comboTierReached = i;
-        const bonus = tier.payout * G.coinMult;
+        const bonus = tier.payout * G.coinMult * fMul;
         G.coins += bonus;
+        if (G.frenzyT > 0) G.frenzyBanked += bonus;
         G.comboFlash = 1;
         G.comboFlashColor = tier.color;
-        Pop.add(pl.wx, sY(pl.wy) + 18, `${tier.label}  +${bonus} ◎`, tier.color);
-        P.ring(pl.wx, sY(pl.wy), tier.color, 30 + i * 6, 420 + i * 60);
-        P.burst(pl.wx, sY(pl.wy), 18 + i * 4, tier.color, 320 + i * 50, 0.6, 4);
+        Pop.add(sx, sy + 18, `${tier.label}  +${bonus} ◎`, tier.color);
+        P.ring(sx, sy, tier.color, 30 + i * 6, 420 + i * 60);
+        P.burst(sx, sy, 18 + i * 4, tier.color, 320 + i * 50, 0.6, 4);
+        Confetti.burst(sx, sy, 8 + i * 4);
+        Rays.burst(sx, sy, tier.color, 8 + i * 2);
+        Flash.hit(tier.color, 0.1 + i * 0.05);
         shake(4 + i * 1.2, 0.18 + i * 0.04);
         SFX.milestone();
+        if (i >= 2) SFX.chaching();
         CG.happy();
         break;
       }
+    }
+    // OVERDRIVE full → trigger FRENZY (skill-earned flow state)
+    if (G.overdrive >= 1 && G.frenzyT <= 0) {
+      G.overdrive = 0;
+      G.frenzyT = FRENZY_TIME;
+      G.frenzyBanked = 0;
+      Callout.add('FRENZY!', '#ffd24a', true);
+      SFX.riser(0.5);
+      bigWinAudio(1.0);
+      cymbal(0.5);
+      cheerSwell(0.7, 0.18);
+      Confetti.rain(40);
+      Coins.spawn(W / 2, H * 0.5, 20, { fountain: true, up: 160 });
+      Shock.ring(W / 2, H * 0.5, '#ffd24a', { r0: 20, r1: Math.max(W, H), lw: 7, life: 0.65, fill: true });
+      Sparkles.scatter(26, '#ffd24a');
+      Flash.hit('#ffd24a', 0.45);
+      shake(8, 0.4);
+      buzz([40, 30, 40, 30, 80]);
+      CG.happy();
+      G.freezeT = 0.18;
     }
   } else {
     G.combo = Math.max(1, G.combo - 1);
@@ -384,10 +530,35 @@ export function bankRun(): ResultData {
   G.coins = 0;                        // segment coins are now banked
 
   Scores.add(h);
-  if (newBest) CG.happy();
-  if (leveledUp || dDone || newBest) SFX.unlock();
+  Vault.save();
 
-  return { h, mc, perf, coins, newBest, xpGain, leveledUp, dailyJustDone: dDone, dailyReward: missionRewards };
+  // Daily Challenge medals (one-time per day) — only on the final bank of a daily run.
+  let dailyMedals: DailyMedal[] = [];
+  if (G.daily && firstEnd) dailyMedals = DailyRun.finish(h);
+
+  // Genuine achievement unlocks for what the run actually accomplished.
+  const summary: AchSummary = {
+    best: Profile.best,
+    runPerf: perf,
+    maxCombo: mc,
+    frenzied: G.frenzyT > 0 || G.frenzyBanked > 0,
+    streak: Profile.streak,
+    potWon: G.jackpotHit,
+    daily: G.daily,
+  };
+  const achievements = Achievements.check(summary);
+
+  if (newBest) CG.happy();
+  if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length) SFX.unlock();
+
+  return {
+    h, mc, perf, coins, newBest, xpGain, leveledUp,
+    dailyJustDone: dDone, dailyReward: missionRewards,
+    potWon: G.jackpotHit ? G.potWon : 0,
+    achievements,
+    daily: G.daily,
+    dailyMedals,
+  };
 }
 
 export function endRun(): void {

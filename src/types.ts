@@ -101,6 +101,16 @@ export interface GameState {
   comboFlashColor: string;        // color of the active milestone flash
   firstRunOfDay: boolean;         // 2× coin bonus active for this run
   coinMult: number;               // current coin multiplier (1 or 2)
+  // ---- meta-layer (cosmetic / reward systems on top of the skill loop) ----
+  daily: boolean;                 // this run is the seeded Daily Challenge
+  overdrive: number;              // 0..1 meter; fills with perfects → triggers FRENZY at full
+  frenzyT: number;                // FRENZY mode time remaining (s); 0 = inactive
+  frenzyMax: number;              // FRENZY duration (s) for the countdown bar
+  frenzyBanked: number;           // coins earned during the active FRENZY (for the end-bonus)
+  jackpotHit: boolean;            // Star Vault already won this run (once only)
+  potWon: number;                 // ★ amount won from the vault this run (for the result screen)
+  freezeT: number;                // brief anticipation hold after a huge event
+  bestNearShown: boolean;         // honest "so close to your best" toast (once per run)
 }
 
 export interface Skin {
@@ -109,6 +119,56 @@ export interface Skin {
   price: number;
   c: string;
   t: string;
+  tag?: string;
+}
+
+export type TrailStyle = 'line' | 'comet' | 'dots' | 'sparkle' | 'bubbles' | 'rainbow';
+
+export interface Trail {
+  id: string;
+  name: string;
+  price: number;
+  style: TrailStyle;
+  c: string | null;   // null → inherit the equipped character colour
+  t: string | null;
+  tag?: string;
+}
+
+export interface World {
+  id: string;
+  name: string;
+  price: number;
+  bg: [string, string, string];
+  alt: [string, string, string];
+  void: string;       // void gradient colour
+  node: string;       // normal-node accent
+  tag?: string;
+}
+
+export interface Achievement {
+  id: string;
+  t: string;          // short title
+  d: string;          // description
+  test: (r: AchSummary) => boolean;
+}
+
+/** Snapshot of a finished run used to evaluate achievement unlocks. */
+export interface AchSummary {
+  best: number;
+  runPerf: number;
+  maxCombo: number;
+  frenzied: boolean;
+  streak: number;
+  potWon: boolean;
+  daily: boolean;
+}
+
+export interface DailyMedal {
+  id: string;
+  name: string;
+  th: number;         // height threshold (m)
+  rw: number;         // one-time coin reward
+  c: string;
 }
 
 export interface Zone {
@@ -178,6 +238,10 @@ export interface ResultData {
   leveledUp: boolean;
   dailyJustDone: boolean;
   dailyReward: number;     // total mission reward granted on this bank (may be 0)
+  potWon: number;          // Star Vault coins won this run (0 if none)
+  achievements: Achievement[];  // achievements newly unlocked this run
+  daily: boolean;          // was this the Daily Challenge route
+  dailyMedals: DailyMedal[];    // medals freshly earned on this daily run
 }
 
 export type FxLevel = 'high' | 'medium' | 'low';

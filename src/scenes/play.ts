@@ -1,12 +1,15 @@
 import { view } from '../core/canvas';
 import { state, sY } from '../game/state';
 import { skin } from '../game/skins';
+import { trail, world } from '../game/collection';
 import { Profile } from '../game/profile';
-import { TAU, angDiff, clamp, glowFX, lerp, rand, text } from '../core/utils';
+import { Pop } from '../core/particles';
+import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
+import { TAU, angDiff, clamp, glowFX, hexA, lerp, rand, text } from '../core/utils';
 import { btn } from '../core/ui';
-import { settings, setAimPreview, setMuted } from '../settings';
+import { settings, setAimPreview, setMuted, setMusicMuted } from '../settings';
 import { rr } from '../core/utils';
-import { CATCH_PAD, G_FALL, LAUNCH, ORBIT, WALL, ZONES } from '../config';
+import { CATCH_PAD, DAILY_MEDALS, G_FALL, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
 
 /* ---------- starfield (one per session) ---------- */
 const STARS = (() => {
@@ -45,10 +48,15 @@ export function drawBG(): void {
     const bl = Math.round(lerp(pa & 255, pb & 255, tt));
     return `rgb(${r},${g},${bl})`;
   };
+  // The equipped WORLD owns the palette (bg → alt blended by zone progress tt);
+  // zones still drive the depth feel via tt. Default world == the classic Neon.
+  const wld = world();
+  const bg0 = wld.bg;
+  const bg1 = wld.alt;
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, mix(z0.bg[0], z1.bg[0]));
-  grad.addColorStop(0.5, mix(z0.bg[1], z1.bg[1]));
-  grad.addColorStop(1, mix(z0.bg[2], z1.bg[2]));
+  grad.addColorStop(0, mix(bg0[0], bg1[0]));
+  grad.addColorStop(0.5, mix(bg0[1], bg1[1]));
+  grad.addColorStop(1, mix(bg0[2], bg1[2]));
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
   const cam = state.G?.cameraY ?? 0;
@@ -88,7 +96,7 @@ function drawNode(n: import('../types').Node): void {
   }
 
   const bonus = n.type === 'bonus';
-  const col = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : sk.c;
+  const col = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : (world().node || sk.c);
   const pr = n.r * (1 + Math.sin(state.G.t * 2 + (n.pulse ?? 0)) * 0.06);
   ctx.save();
   ctx.fillStyle = col;
@@ -145,19 +153,76 @@ function drawPlayer(): void {
   const sk = skin();
 
   if (!pl.latched && pl.trail.length > 1) {
+    // per-equipped-trail flight ribbon — gives each unlock a real visual identity
+    const tr = trail();
+    const style = tr.style;
+    const tc = tr.c || sk.c;
+    const tt2 = tr.t || sk.t;
     ctx.save();
-    ctx.strokeStyle = sk.c;
     ctx.lineCap = 'round';
-    for (let i = 1; i < pl.trail.length; i++) {
-      const a = i / pl.trail.length;
-      ctx.globalAlpha = a * 0.5;
-      ctx.lineWidth = a * pl.r * 1.3;
-      ctx.beginPath();
-      ctx.moveTo(pl.trail[i - 1].x, sY(pl.trail[i - 1].y));
-      ctx.lineTo(pl.trail[i].x, sY(pl.trail[i].y));
-      ctx.stroke();
+    if (style === 'line' || style === 'comet') {
+      ctx.strokeStyle = tc;
+      if (style === 'comet') { ctx.shadowColor = tc; ctx.shadowBlur = glowFX(10); }
+      for (let i = 1; i < pl.trail.length; i++) {
+        const a = i / pl.trail.length;
+        ctx.globalAlpha = a * (style === 'comet' ? 0.7 : 0.5);
+        ctx.lineWidth = a * pl.r * (style === 'comet' ? 1.7 : 1.3);
+        ctx.beginPath();
+        ctx.moveTo(pl.trail[i - 1].x, sY(pl.trail[i - 1].y));
+        ctx.lineTo(pl.trail[i].x, sY(pl.trail[i].y));
+        ctx.stroke();
+      }
+    } else if (style === 'dots') {
+      ctx.fillStyle = tc; ctx.shadowColor = tc; ctx.shadowBlur = glowFX(6);
+      for (let i = 0; i < pl.trail.length; i++) {
+        const a = (i + 1) / pl.trail.length;
+        ctx.globalAlpha = a * 0.7;
+        ctx.beginPath();
+        ctx.arc(pl.trail[i].x, sY(pl.trail[i].y), a * pl.r * 0.5 + 1, 0, TAU);
+        ctx.fill();
+      }
+    } else if (style === 'sparkle') {
+      ctx.fillStyle = tt2; ctx.shadowColor = tt2; ctx.shadowBlur = glowFX(8);
+      for (let i = 0; i < pl.trail.length; i++) {
+        const a = (i + 1) / pl.trail.length;
+        ctx.globalAlpha = a * 0.8;
+        const sz = a * 5 + 1;
+        ctx.save();
+        ctx.translate(pl.trail[i].x, sY(pl.trail[i].y));
+        ctx.rotate(G.t * 4 + i);
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const ang = (k / 4) * TAU;
+          ctx.lineTo(Math.cos(ang) * sz, Math.sin(ang) * sz);
+          ctx.lineTo(Math.cos(ang + Math.PI / 4) * sz * 0.35, Math.sin(ang + Math.PI / 4) * sz * 0.35);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+    } else if (style === 'bubbles') {
+      ctx.strokeStyle = tt2; ctx.shadowColor = tc; ctx.shadowBlur = glowFX(7); ctx.lineWidth = 1.2;
+      for (let i = 0; i < pl.trail.length; i++) {
+        const a = (i + 1) / pl.trail.length;
+        ctx.globalAlpha = a * 0.55;
+        ctx.beginPath();
+        ctx.arc(pl.trail[i].x, sY(pl.trail[i].y), 2 + a * 4, 0, TAU);
+        ctx.stroke();
+      }
+    } else if (style === 'rainbow') {
+      for (let i = 1; i < pl.trail.length; i++) {
+        const a = i / pl.trail.length;
+        ctx.strokeStyle = `hsl(${(G.t * 120 + i * 18) % 360},90%,65%)`;
+        ctx.globalAlpha = a * 0.6;
+        ctx.lineWidth = a * pl.r * 1.4;
+        ctx.beginPath();
+        ctx.moveTo(pl.trail[i - 1].x, sY(pl.trail[i - 1].y));
+        ctx.lineTo(pl.trail[i].x, sY(pl.trail[i].y));
+        ctx.stroke();
+      }
     }
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   // tether
@@ -285,16 +350,17 @@ function drawTrajectory(): void {
 function drawVoid(): void {
   const { ctx, W, H } = view;
   const vy = sY(state.G.voidY);
+  const vc = world().void || '#ff3b5c';
   if (vy < H + 40) {
     const grad = ctx.createLinearGradient(0, vy - 50, 0, H);
-    grad.addColorStop(0, 'rgba(255,59,92,0)');
-    grad.addColorStop(0.4, 'rgba(255,59,92,.25)');
-    grad.addColorStop(1, 'rgba(120,10,40,.9)');
+    grad.addColorStop(0, hexA(vc, 0));
+    grad.addColorStop(0.4, hexA(vc, 0.25));
+    grad.addColorStop(1, hexA(vc, 0.9));
     ctx.fillStyle = grad;
     ctx.fillRect(0, vy - 50, W, H - (vy - 50) + 50);
-    ctx.strokeStyle = '#ff3b5c';
+    ctx.strokeStyle = vc;
     ctx.lineWidth = 3;
-    ctx.shadowColor = '#ff3b5c';
+    ctx.shadowColor = vc;
     ctx.shadowBlur = glowFX(18);
     ctx.beginPath();
     ctx.moveTo(0, vy);
@@ -355,7 +421,7 @@ function drawComboFlash(): void {
   ctx.restore();
 }
 
-function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'aim', col: string): void {
+function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim', col: string): void {
   const { ctx } = view;
   ctx.save();
   rr(x, y, s, s, 10);
@@ -389,6 +455,23 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
     ctx.moveTo(cx + 3, cy - 4); ctx.lineTo(cx + 9, cy + 4);
     ctx.moveTo(cx + 9, cy - 4); ctx.lineTo(cx + 3, cy + 4);
     ctx.stroke();
+  } else if (icon === 'music' || icon === 'musicOff') {
+    // eighth-note glyph
+    ctx.beginPath();
+    ctx.moveTo(cx - 5, cy + 7);
+    ctx.lineTo(cx - 5, cy - 7);
+    ctx.lineTo(cx + 7, cy - 10);
+    ctx.lineTo(cx + 7, cy + 3);
+    ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx - 8, cy + 7, 3.2, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 4, cy + 3, 3.2, 0, TAU); ctx.fill();
+    if (icon === 'musicOff') {
+      // slash to read as "off"
+      ctx.beginPath();
+      ctx.moveTo(cx - 10, cy + 10);
+      ctx.lineTo(cx + 10, cy - 10);
+      ctx.stroke();
+    }
   } else if (icon === 'aim') {
     ctx.beginPath();
     ctx.arc(cx, cy, 6, 0, TAU);
@@ -408,12 +491,163 @@ export function drawTopToggles(): void {
   const s = 42;
   const pad = 12;
   const top = pad + SAFE_TOP;
+  // SFX mute
   btn('mute', pad, top, s, s, () => setMuted(!settings.muted));
   drawIconBtn(pad, top, s, settings.muted ? 'mute' : 'sound', settings.muted ? '#5b6488' : '#2ff3e0');
-  const x2 = pad + s + 8;
+  // music mute (independent of SFX)
+  const xMusic = pad + s + 8;
+  btn('music', xMusic, top, s, s, () => setMusicMuted(!settings.musicMuted));
+  drawIconBtn(xMusic, top, s, settings.musicMuted ? 'musicOff' : 'music', settings.musicMuted ? '#5b6488' : '#ffd24a');
   // QA toggle: trajectory preview on/off (the glowing gate always stays on)
+  const x2 = pad + 2 * (s + 8);
   btn('aim', x2, top, s, s, () => setAimPreview(!settings.aimPreview));
   drawIconBtn(x2, top, s, 'aim', settings.aimPreview ? '#2ff3e0' : '#5b6488');
+}
+
+/* In-world "ghost goal" markers — a line you climb toward. Normal mode shows
+   your all-time BEST + the next milestone; Daily mode shows the medal lines.
+   Turns a bare number into a journey ("one more run"). */
+function drawGoalMarkers(): void {
+  const { ctx, W, H } = view;
+  const G = state.G;
+  const line = (h: number, label: string, c: string): void => {
+    if (h <= 0) return;
+    const y = sY(h * 12 - 90);
+    if (y < 46 || y > H - 30) return;
+    ctx.save();
+    ctx.globalAlpha = 0.42;
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 9]);
+    ctx.shadowColor = c;
+    ctx.shadowBlur = glowFX(6);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.92;
+    ctx.font = "800 10px 'Unbounded', sans-serif";
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = c;
+    ctx.shadowBlur = glowFX(8);
+    ctx.fillText(label, W - 12, y - 9);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  };
+  if (G.daily) {
+    for (const m of DAILY_MEDALS) if (G.height < m.th) line(m.th, m.name + ' · ' + m.th + 'm', m.c);
+  } else {
+    if (Profile.best > 0 && !G.beatBest) line(Profile.best, 'BEST · ' + Profile.best + 'm', '#ffd24a');
+    const nm = MILESTONES.find((m) => m > G.height);
+    if (nm) line(nm, nm + ' m', '#9fb0e0');
+  }
+}
+
+/* FRENZY backdrop — a disco colour wash + rotating light beams to signal the
+   earned flow state. Gated by FX level. */
+function drawFrenzyBloom(): void {
+  const G = state.G;
+  if (G.frenzyT <= 0) return;
+  const { ctx, W, H } = view;
+  const cols = ['#ffd24a', '#ff4d8d', '#2ff3e0'];
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.09 + Math.sin(G.t * 12) * 0.035;
+  ctx.fillStyle = cols[(G.t * 4 | 0) % cols.length];
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  if (glowFX(10) <= 3) { ctx.globalAlpha = 1; return; }   // skip beams on low FX
+  const cx = W / 2;
+  const cy = H * 0.42;
+  const R = Math.hypot(W, H);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(G.t * 0.6);
+  ctx.globalCompositeOperation = 'lighter';
+  const beams = 7;
+  for (let i = 0; i < beams; i++) {
+    const c = cols[i % cols.length];
+    ctx.save();
+    ctx.rotate((i / beams) * TAU);
+    const grad = ctx.createLinearGradient(0, 0, R, 0);
+    grad.addColorStop(0, hexA(c, 0.16));
+    grad.addColorStop(1, hexA(c, 0));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(0.13) * R, Math.sin(0.13) * R);
+    ctx.lineTo(Math.cos(-0.13) * R, Math.sin(-0.13) * R);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+}
+
+/* OVERDRIVE meter (fills with perfects) or, once full and active, the FRENZY
+   countdown banner. Sits just under the height readout. */
+function drawMeters(): void {
+  const { ctx, W, SAFE_TOP } = view;
+  const G = state.G;
+  if (G.frenzyT <= 0) {
+    const mw = 120;
+    const mx = W / 2 - mw / 2;
+    const my = 96 + SAFE_TOP;
+    rr(mx, my, mw, 5, 3);
+    ctx.fillStyle = 'rgba(255,255,255,.08)';
+    ctx.fill();
+    if (G.overdrive > 0) {
+      rr(mx, my, mw * G.overdrive, 5, 3);
+      const grd = ctx.createLinearGradient(mx, 0, mx + mw, 0);
+      grd.addColorStop(0, '#ff4d8d');
+      grd.addColorStop(1, '#ffd24a');
+      ctx.fillStyle = grd;
+      ctx.shadowColor = '#ffd24a';
+      ctx.shadowBlur = glowFX(10);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = "700 9px 'Unbounded', sans-serif";
+    ctx.fillStyle = G.overdrive >= 1 ? '#ffd24a' : '#7e88b5';
+    ctx.fillText('OVERDRIVE', W / 2, my + 12);
+  } else {
+    const fp = clamp(G.frenzyT / G.frenzyMax, 0, 1);
+    const fw = 170;
+    const fx2 = W / 2 - fw / 2;
+    const fy = 90 + SAFE_TOP;
+    const fb = 1 + Math.sin(G.t * 16) * 0.04;
+    ctx.save();
+    ctx.translate(W / 2, fy + 10);
+    ctx.scale(fb, fb);
+    ctx.translate(-W / 2, -(fy + 10));
+    rr(fx2, fy, fw, 22, 11);
+    ctx.fillStyle = 'rgba(20,10,2,.85)';
+    ctx.fill();
+    ctx.strokeStyle = '#ffd24a';
+    ctx.shadowColor = '#ffd24a';
+    ctx.shadowBlur = glowFX(14);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffd24a';
+    ctx.font = "800 12px 'Unbounded', sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★ FRENZY 2× ★', W / 2, fy + 11);
+    ctx.restore();
+    rr(fx2 + 2, fy + 24, fw - 4, 3, 2);
+    ctx.fillStyle = 'rgba(255,210,74,.2)';
+    ctx.fill();
+    rr(fx2 + 2, fy + 24, (fw - 4) * fp, 3, 2);
+    ctx.fillStyle = '#ffd24a';
+    ctx.fill();
+  }
 }
 
 export function renderPlay(): void {
@@ -421,6 +655,8 @@ export function renderPlay(): void {
   const G = state.G;
   drawBG();
   drawVoid();
+  drawGoalMarkers();
+  drawFrenzyBloom();
   for (const n of G.nodes) drawNode(n);
   for (const s of G.sparks) {
     if (s.got) continue;
@@ -455,15 +691,18 @@ export function renderPlay(): void {
   drawTrajectory();
   drawPlayer();
   drawTutorialHand();
+  Pop.draw();
+  fxDrawWorld();
   drawComboFlash();
 
   const closeness = clamp(1 - (G.player.wy - G.voidY) / 240, 0, 1);
   if (closeness > 0.05) {
     ctx.save();
     const a = closeness * 0.5 * (0.7 + Math.sin(G.t * 8) * 0.3);
+    const vc = world().void || '#ff3b5c';
     const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.7);
-    grad.addColorStop(0, 'rgba(255,59,92,0)');
-    grad.addColorStop(1, `rgba(255,59,92,${a})`);
+    grad.addColorStop(0, hexA(vc, 0));
+    grad.addColorStop(1, hexA(vc, a));
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
@@ -473,6 +712,7 @@ export function renderPlay(): void {
   text(G.height + ' m', W / 2, 40 + SAFE_TOP, 30, '#fff', 800, 16, 'center', "'Unbounded'");
   if (G.combo > 1) text('PERFECT x' + G.combo, W / 2, 72 + SAFE_TOP, 15, '#ffb020', 700, 8);
   text('◎ ' + (Profile.coins + G.coins), W - 16, 28 + SAFE_TOP, 14, '#ffe39b', 700, 6, 'right');
+  drawMeters();
 
   if (G.tut >= 0) {
     ctx.globalAlpha = clamp(1 - (G.tutT - 3) / 1.5, 0, 1);
@@ -485,6 +725,8 @@ export function renderPlay(): void {
     text(G.toast.txt, W / 2, H * 0.42, 30, G.toast.c, 800, 18, 'center', "'Unbounded'");
     ctx.globalAlpha = 1;
   }
+  // big arcade callouts + screen flash sit on top of the HUD
+  fxDrawOverlay();
 }
 
 export function dimVoid(a: number): void {

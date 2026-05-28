@@ -68,6 +68,79 @@ export function noise(d = 0.18, vol = 0.22, lp = 1600): void {
   s.start();
 }
 
+/* swelling band-passed noise — a "crowd cheer / applause" texture for big wins */
+export function cheerSwell(d = 0.55, vol = 0.16): void {
+  if (settings.muted) return;
+  const a = ac();
+  if (!a) return;
+  const n = Math.floor(a.sampleRate * d);
+  const b = a.createBuffer(1, n, a.sampleRate);
+  const dd = b.getChannelData(0);
+  for (let i = 0; i < n; i++) dd[i] = Math.random() * 2 - 1;
+  const s = a.createBufferSource();
+  s.buffer = b;
+  const g = a.createGain();
+  const f = a.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = 2400;
+  f.Q.value = 0.6;
+  const t = a.currentTime;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + d * 0.45);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+  s.connect(f);
+  f.connect(g);
+  g.connect(a.destination);
+  s.start();
+}
+
+/* bright noise cymbal swell for fanfares */
+export function cymbal(d = 0.4): void {
+  if (settings.muted) return;
+  const a = ac();
+  if (!a) return;
+  const n = Math.floor(a.sampleRate * d);
+  const b = a.createBuffer(1, n, a.sampleRate);
+  const dd = b.getChannelData(0);
+  for (let i = 0; i < n; i++) dd[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 1.5);
+  const s = a.createBufferSource();
+  s.buffer = b;
+  const g = a.createGain();
+  g.gain.value = 0.18;
+  const f = a.createBiquadFilter();
+  f.type = 'highpass';
+  f.frequency.value = 4500;
+  s.connect(f);
+  f.connect(g);
+  g.connect(a.destination);
+  s.start();
+}
+
+/* layered big-win cue: sparkle shimmer + major-triad chord + low thump (per casino spec) */
+export function bigWinAudio(intensity: number): void {
+  if (settings.muted) return;
+  const a = ac();
+  if (!a) return;
+  const spk = Math.round(3 + intensity * 5);
+  for (let i = 0; i < spk; i++) {
+    setTimeout(() => tone(1700 + i * 120 + Math.random() * 500, 0.08, 'triangle', 0.1), i * 16);
+  }
+  const root = 523 * (1 + intensity * 0.05);
+  [root, root * 1.26, root * 1.5].forEach((f, i) => setTimeout(() => tone(f, 0.34, 'sawtooth', 0.07 - i * 0.012), i * 4));
+  const t = a.currentTime;
+  const o = a.createOscillator();
+  const g = a.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(120, t);
+  o.frequency.exponentialRampToValueAtTime(50, t + 0.18);
+  g.gain.setValueAtTime(0.32, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  o.connect(g);
+  g.connect(a.destination);
+  o.start(t);
+  o.stop(t + 0.24);
+}
+
 const SFX_LAST: Record<string, number> = {};
 function thr(name: string, ms: number): boolean {
   const t = performance.now();
@@ -113,5 +186,59 @@ export const SFX = {
   },
   click(): void {
     tone(520, 0.05, 'square', 0.1, 90);
+  },
+  /* a short bright "tick" used by count-up rolls */
+  tick(): void {
+    if (!thr('tick', 24)) return;
+    tone(1500, 0.03, 'square', 0.05, 80);
+  },
+  /* coin lands in the bank — bright plink */
+  deposit(): void {
+    if (!thr('deposit', 22)) return;
+    tone(1240, 0.04, 'square', 0.08, 300);
+    setTimeout(() => tone(1860, 0.05, 'triangle', 0.05), 28);
+  },
+  /* cash-register ka-ching */
+  chaching(): void {
+    if (!thr('chaching', 60)) return;
+    tone(880, 0.05, 'square', 0.12, 300);
+    setTimeout(() => tone(1320, 0.07, 'square', 0.12, 180), 55);
+    setTimeout(() => tone(1860, 0.13, 'triangle', 0.13), 115);
+  },
+  /* a tumble of coins into the tray */
+  coinCascade(n = 6): void {
+    if (settings.muted) return;
+    n = Math.min(n, 12);
+    for (let i = 0; i < n; i++) setTimeout(() => tone(720 + i * 85, 0.05, 'square', 0.07, 140), i * 32);
+  },
+  /* full fanfare for jackpot / vault wins */
+  jackpot(): void {
+    [523, 659, 784, 1046, 1318, 1568, 2093].forEach((f, i) => setTimeout(() => tone(f, 0.14, 'triangle', 0.16), i * 52));
+    setTimeout(() => cheerSwell(0.6, 0.16), 120);
+  },
+  /* ascending anticipation riser before a payout reveal */
+  riser(dur = 0.7): void {
+    if (settings.muted) return;
+    const a = ac();
+    if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator();
+    const g = a.createGain();
+    const f = a.createBiquadFilter();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(280, t);
+    o.frequency.exponentialRampToValueAtTime(1600, t + dur);
+    f.type = 'bandpass';
+    f.frequency.setValueAtTime(420, t);
+    f.frequency.exponentialRampToValueAtTime(2400, t + dur);
+    f.Q.value = 1.1;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.11, t + dur * 0.82);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f);
+    f.connect(g);
+    g.connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.05);
   },
 };

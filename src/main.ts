@@ -5,11 +5,13 @@ import { state, resetRun, maybeShowStartToast } from './game/state';
 import { update, release, requestRevive } from './game/update';
 import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
-import { renderHome, setPlayHandler } from './scenes/home';
+import { renderHome, setPlayHandler, setDailyHandler } from './scenes/home';
 import { renderPlay } from './scenes/play';
 import { renderShop } from './scenes/shop';
 import { ac } from './core/audio';
+import { Music } from './core/music';
 import { CG } from './core/cg';
+import { fxUpd } from './core/fx';
 import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
 import { rand, text } from './core/utils';
@@ -23,32 +25,38 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 80));
 /* ---------- play / replay / revive flow ---------- */
 let paused = false;
 
-function startPlay(): void {
-  resetRun();
+function startPlay(daily = false): void {
+  resetRun(daily);
   maybeShowStartToast();
   state.scene = 'play';
   CG.gameplayStart();
 }
 
 let replayCount = 0;
-function requestReplay(): void {
+function requestReplay(daily = false): void {
   replayCount++;
   // Every 3rd replay shows a midgame interstitial. When the SDK is unavailable
   // (off-platform), CG.midgame fires `done` immediately.
-  if (CG.ready && replayCount % 3 === 0) CG.midgame(startPlay);
-  else startPlay();
+  if (CG.ready && replayCount % 3 === 0) CG.midgame(() => startPlay(daily));
+  else startPlay(daily);
 }
 
-setPlayHandler(startPlay);
-setReplayHandler(requestReplay);
+// Home PLAY is the player's first action of a session → never gate with an ad.
+setPlayHandler(() => startPlay(false));
+// Home DAILY → the seeded Daily Challenge.
+setDailyHandler(() => startPlay(true));
+// Result PLAY AGAIN → replay the SAME mode (daily stays daily), ad-gated.
+setReplayHandler(() => requestReplay(state.G?.daily ?? false));
 setReviveHandler(requestRevive);
 
 // Ad lifecycle pauses the game loop so updates don't run behind the overlay.
 CG.bindPauseHook((p) => {
   paused = p;
-  if (!paused) {
+  if (p) {
+    Music.pause();          // silence the bed during the ad
+  } else {
     last = performance.now();
-    acc = 0;
+    acc = 0;                // Music resumes via its per-frame fade
   }
 });
 
@@ -65,9 +73,9 @@ function primaryAction(): void {
   if (state.scene === 'play') {
     if (!state.G.dead) release();
   } else if (state.scene === 'over') {
-    requestReplay();
+    requestReplay(state.G?.daily ?? false);
   } else if (state.scene === 'home') {
-    startPlay();
+    startPlay(false);
   } else if (state.scene === 'shop') {
     state.scene = 'home';
   }
@@ -75,6 +83,7 @@ function primaryAction(): void {
 
 function onDown(e: PointerEvent): void {
   ac();
+  Music.start();
   e.preventDefault();
   if (inputLock) return;
   inputLock = true;
@@ -96,6 +105,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowUp') {
     e.preventDefault();
     ac();
+    Music.start();
     if (inputLock) return;
     inputLock = true;
     setTimeout(() => { inputLock = false; }, 40);
@@ -144,6 +154,8 @@ function frame(now: number): void {
 
   P.upd(dt);
   Pop.upd(dt);
+  fxUpd(dt);
+  Music.upd(dt);
   updateShake(dt);
 
   const { ctx, W, H } = view;
@@ -196,9 +208,11 @@ document.addEventListener('visibilitychange', () => {
   // Don't override the ad-pause hook — only react to tab visibility when no ad is active.
   if (CG.adActive) return;
   paused = document.hidden;
-  if (!paused) {
+  if (paused) {
+    Music.pause();
+  } else {
     last = performance.now();
-    acc = 0;
+    acc = 0;          // Music resumes via its per-frame fade
   }
 });
 
