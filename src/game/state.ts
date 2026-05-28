@@ -38,6 +38,9 @@ export function resetRun(): void {
     target: null,
     tut: settings.seenTut ? -1 : 0,
     tutT: 0,
+    revivedThisRun: false,
+    dailyRunCounted: false,
+    banked: { h: 0, perf: 0, mc: 0 },
     player: {
       wx: W / 2,
       wy: -30,

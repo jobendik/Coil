@@ -1,4 +1,4 @@
-import type { Node } from '../types';
+import type { Node, ResultData } from '../types';
 import { view } from '../core/canvas';
 import { state, sY } from './state';
 import { genNode } from './nodes';
@@ -10,6 +10,8 @@ import { settings, setSeenTut } from '../settings';
 import { skin } from './skins';
 import { Profile } from './profile';
 import { Daily } from './daily';
+import { Scores } from './scores';
+import { CG } from '../core/cg';
 import { Result } from '../scenes/result';
 import {
   CATCH_PAD,
@@ -82,6 +84,10 @@ export function update(dt: number): void {
     if (pl.trail.length > 12) pl.trail.shift();
     for (const n of G.nodes) {
       const sd = distPointToSegment(n.wx, n.wy, px, py, pl.wx, pl.wy);
+      if (n.type === 'spike') {
+        if (sd < n.r + pl.r) { hit('spike'); return; }
+        continue;
+      }
       if (sd < n.r + pl.r + CATCH_PAD && n !== pl.lastReleased) {
         const dx = pl.wx - n.wx;
         const dy = pl.wy - n.wy;
@@ -112,6 +118,7 @@ export function update(dt: number): void {
     G.coins += rw;
     SFX.milestone();
     shake(2, 0.12);
+    CG.happy();
   }
   let z = 0;
   for (let i = 0; i < ZONES.length; i++) if (G.height >= ZONES[i].from) z = i;
@@ -241,7 +248,7 @@ export function release(): void {
   }
 }
 
-export function hit(cause: 'void' | 'fall'): void {
+export function hit(cause: 'void' | 'fall' | 'spike'): void {
   const G = state.G;
   const pl = G.player;
   if (G.shield && cause !== 'fall') {
@@ -265,26 +272,125 @@ export function hit(cause: 'void' | 'fall'): void {
   P.burst(pl.wx, sY(pl.wy), 30, skin().c, 360, 0.7, 7);
 }
 
-export function endRun(): void {
+/**
+ * Idempotent banking: awards deltas over the run's high-water marks so a
+ * mid-run revive continues the SAME run without ever double-counting
+ * score, XP, coins, or daily progress. Returns a ResultData payload for
+ * the result screen.
+ */
+export function bankRun(): ResultData {
   const G = state.G;
   const h = G.height;
   const mc = G.maxCombo;
   const perf = G.perfects;
   const coins = G.coins;
-  const newBest = Profile.setBest(h);
-  const xpGain = h + perf * 6 + mc * 3 + 10;
+
+  const dH = Math.max(0, h - G.banked.h);
+  const dPerf = Math.max(0, perf - G.banked.perf);
+  const dMC = Math.max(0, mc - G.banked.mc);
+  const firstEnd = !G.dailyRunCounted;
+
+  const xpGain = dH + dPerf * 6 + dMC * 3 + (firstEnd ? 10 : 0);
   const prevLvl = Profile.level();
   Profile.addXP(xpGain);
   Profile.addCoins(coins);
+  const newBest = Profile.setBest(h);
   const leveledUp = Profile.level() > prevLvl;
-  const dDone = [
-    Daily.report('runs', 1),
-    Daily.report('perf', perf),
+
+  const reports: boolean[] = [];
+  if (firstEnd) {
+    reports.push(Daily.report('runs', 1));
+    G.dailyRunCounted = true;
+  }
+  reports.push(
+    Daily.report('perf', dPerf),
     Daily.report('coins', coins),
     Daily.report('height', h),
     Daily.report('combo', mc),
-  ].some(Boolean);
-  if (leveledUp || dDone) SFX.unlock();
-  Result.show({ h, mc, perf, coins, newBest, xpGain, leveledUp, dailyJustDone: dDone });
+  );
+  const dDone = reports.some(Boolean);
+
+  G.banked.h = h;
+  G.banked.perf = perf;
+  G.banked.mc = mc;
+  G.coins = 0;                        // segment coins are now banked
+
+  Scores.add(h);
+  if (newBest) CG.happy();
+  if (leveledUp || dDone || newBest) SFX.unlock();
+
+  return { h, mc, perf, coins, newBest, xpGain, leveledUp, dailyJustDone: dDone };
+}
+
+export function endRun(): void {
+  CG.gameplayStop();
+  Result.show(bankRun());
   state.scene = 'over';
+}
+
+/**
+ * One continue per run: places the player on the highest safe node, with
+ * shield + invuln, and pushes the void back below the screen. Called by
+ * `requestRevive`, which either watches a rewarded ad or — on platforms
+ * without an SDK — grants the free continue so the flow is testable.
+ */
+export function revive(): void {
+  const G = state.G;
+  const { W, H } = view;
+  const pl = G.player;
+  G.dead = false;
+  G.deadT = 0;
+
+  let best: Node | null = null;
+  let bd = 1e9;
+  for (const n of G.nodes) {
+    if (n.type === 'spike') continue;
+    if (n.wy <= G.voidY + 140) continue;
+    const d = Math.abs(n.wy - G.maxY);
+    if (d < bd) { bd = d; best = n; }
+  }
+  if (!best) {
+    best = {
+      wx: W / 2, wy: G.maxY + 30, r: 18, type: 'normal', baseX: W / 2, next: null,
+      amp: 0, ph: 0, spd: 1, pulse: 0,
+    };
+    G.nodes.push(best);
+  }
+
+  pl.latched = true;
+  pl.node = best;
+  pl.ang = -Math.PI / 2;
+  pl.dir = 1;
+  pl.vx = 0;
+  pl.vy = 0;
+  pl.trail.length = 0;
+  pl.lastReleased = null;
+  pl.wx = best.wx;
+  pl.wy = best.wy - 30;                   // sit a short hop above the node for visual clarity
+
+  G.target = best.next;
+  computeSweetZone();
+  G.voidY = Math.min(G.voidY, pl.wy - H * 1.15);
+  G.shield = true;
+  G.invuln = 1.6;
+  G.combo = 1;
+  G.revivedThisRun = true;
+  G.toast = { txt: 'BACK IN!', t: 1.4, c: '#9ffff2' };
+  P.ring(pl.wx, sY(pl.wy), '#9ffff2', 24, 320);
+  SFX.shield();
+
+  state.scene = 'play';
+  CG.gameplayStart();
+}
+
+export function requestRevive(): void {
+  const G = state.G;
+  if (G.revivedThisRun) return;
+  if (CG.ready) {
+    CG.rewarded(revive, () => {
+      G.toast = { txt: 'AD UNAVAILABLE', t: 1.3, c: '#ff8a9c' };
+    });
+  } else {
+    revive();   // standalone/dev: grant the one continue so the flow is testable off-platform
+  }
 }

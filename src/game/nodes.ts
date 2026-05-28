@@ -84,6 +84,17 @@ export function genNode(): void {
   G.nodes.push(node);
   G.lastNodeY = ny;
 
+  // Spikes — instant-death hazards (shield still saves). Placed laterally off the
+  // node line so the gate's flight path stays clear. NOT linked into prev.next, so
+  // the gate (which targets n.next) never aims at a spike. Gated to hm > 320.
+  if (!easy && hm > 320 && Math.random() < 0.06 + diff * 0.14) {
+    const sx = clamp(nx + (nx < W / 2 ? rand(95, 150) : -rand(95, 150)), 28, W - 28);
+    G.nodes.push({
+      wx: sx, wy: ny + rand(-26, 26), r: 15, type: 'spike', baseX: sx, next: null,
+      amp: 0, ph: rand(0, TAU), spd: 1, pulse: rand(0, TAU),
+    });
+  }
+
   // collectibles
   if (Math.random() < 0.5) {
     G.sparks.push({

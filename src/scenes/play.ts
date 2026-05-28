@@ -67,6 +67,26 @@ function drawNode(n: import('../types').Node): void {
   const y = sY(n.wy);
   const sk = skin();
   if (y < -60 || y > H + 60) return;
+
+  if (n.type === 'spike') {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(state.G.t * 1.5);
+    ctx.fillStyle = '#ff3b5c';
+    ctx.shadowColor = '#ff3b5c';
+    ctx.shadowBlur = glowFX(14);
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU;
+      const rr2 = i % 2 ? n.r : n.r * 0.5;
+      ctx.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
   const bonus = n.type === 'bonus';
   const col = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : sk.c;
   const pr = n.r * (1 + Math.sin(state.G.t * 2 + (n.pulse ?? 0)) * 0.06);
@@ -247,6 +267,7 @@ function drawTrajectory(): void {
     if (x > W - pl.r) { x = W - pl.r; vx = -Math.abs(vx) * WALL; }
     let hitN = false;
     for (const n of G.nodes) {
+      if (n.type === 'spike') continue;     // spikes kill; don't terminate the preview on them
       if (n === pl.node) continue;
       if (Math.hypot(x - n.wx, y - n.wy) < n.r + pl.r + CATCH_PAD) { hitN = true; break; }
     }
