@@ -1,12 +1,19 @@
+import type { Node } from '../types';
 import { view } from '../core/canvas';
 import { state, sY } from '../game/state';
 import { skin } from '../game/skins';
 import { Profile } from '../game/profile';
-import { TAU, angDiff, clamp, glowFX, lerp, rand, text } from '../core/utils';
+import { TAU, clamp, glowFX, lerp, rand, text, rr } from '../core/utils';
 import { btn } from '../core/ui';
 import { settings, setAimPreview, setMuted } from '../settings';
-import { rr } from '../core/utils';
-import { CATCH_PAD, G_FALL, LAUNCH, ORBIT, WALL, ZONES } from '../config';
+import { curCatchPad, perfectHi } from '../game/physics';
+import {
+  G_FALL,
+  LAUNCH,
+  PERFECT_LO,
+  WALL_BOUNCE,
+  ZONES,
+} from '../config';
 
 /* ---------- starfield (one per session) ---------- */
 const STARS = (() => {
@@ -61,12 +68,32 @@ export function drawBG(): void {
   ctx.globalAlpha = 1;
 }
 
-function drawNode(n: import('../types').Node): void {
+function drawNode(n: Node): void {
   const { ctx, H } = view;
   const x = n.wx;
   const y = sY(n.wy);
   const sk = skin();
   if (y < -60 || y > H + 60) return;
+
+  if (n.type === 'spike') {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(state.G.t * 1.5);
+    ctx.fillStyle = '#ff3b5c';
+    ctx.shadowColor = '#ff3b5c';
+    ctx.shadowBlur = glowFX(14);
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU;
+      const rr2 = i % 2 ? n.r : n.r * 0.5;
+      ctx.lineTo(Math.cos(a) * rr2, Math.sin(a) * rr2);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
   const bonus = n.type === 'bonus';
   const col = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : sk.c;
   const pr = n.r * (1 + Math.sin(state.G.t * 2 + (n.pulse ?? 0)) * 0.06);
@@ -84,38 +111,7 @@ function drawNode(n: import('../types').Node): void {
   ctx.restore();
 }
 
-/* the glowing gate: safe band (dim) + perfect band (bright), drawn on the orbit */
-function drawGate(): void {
-  const { ctx } = view;
-  const pl = state.G.player;
-  const sw = state.G.sweet;
-  if (!pl.latched || !sw || !sw.reachable) return;
-  const n = pl.node;
-  const cx = n.wx;
-  const cy = sY(n.wy);
-  const sk = skin();
-  ctx.save();
-  // safe release band
-  ctx.strokeStyle = sk.c;
-  ctx.globalAlpha = 0.30;
-  ctx.lineWidth = 6;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.arc(cx, cy, ORBIT, sw.lo, sw.hi);
-  ctx.stroke();
-  // perfect band
-  const inPerfect = angDiff(pl.ang, sw.center) <= sw.tol;
-  ctx.globalAlpha = inPerfect ? 1 : 0.85;
-  ctx.strokeStyle = inPerfect ? '#ffffff' : sk.t;
-  ctx.lineWidth = inPerfect ? 8 : 6;
-  ctx.shadowColor = inPerfect ? '#fff' : sk.t;
-  ctx.shadowBlur = glowFX(inPerfect ? 16 : 8);
-  ctx.beginPath();
-  ctx.arc(cx, cy, ORBIT, sw.center - sw.tol, sw.center + sw.tol);
-  ctx.stroke();
-  ctx.restore();
-}
-
+/* The player as a small electric creature: trail, tether, charge ring, body w/ squash, eyes. */
 function drawPlayer(): void {
   const { ctx } = view;
   const G = state.G;
@@ -124,6 +120,7 @@ function drawPlayer(): void {
   const y = sY(pl.wy);
   const sk = skin();
 
+  // trail while flying
   if (!pl.latched && pl.trail.length > 1) {
     ctx.save();
     ctx.strokeStyle = sk.c;
@@ -140,17 +137,57 @@ function drawPlayer(): void {
     ctx.restore();
   }
 
-  // tether
+  // tether + charge ring around the player (perfect band is reward-only — no danger band)
+  const pHi = perfectHi();
+  const inPerfect = pl.latched && pl.charge >= PERFECT_LO && pl.charge <= pHi;
   if (pl.latched) {
     const n = pl.node;
+    const ch = pl.charge;
+    const a0 = -Math.PI / 2;
+    const RR = 15;
+
     ctx.save();
     ctx.strokeStyle = sk.c;
-    ctx.globalAlpha = 0.4;
+    ctx.globalAlpha = 0.45;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(n.wx, sY(n.wy));
     ctx.lineTo(x, y);
     ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(x, y);
+    // dim base ring
+    ctx.strokeStyle = 'rgba(255,255,255,.13)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, RR, 0, TAU);
+    ctx.stroke();
+    // PERFECT band (pulses when you're inside it)
+    ctx.strokeStyle = inPerfect ? 'rgba(255,255,255,.95)' : 'rgba(159,255,242,.55)';
+    ctx.lineWidth = inPerfect ? 5 : 4;
+    if (inPerfect) { ctx.shadowColor = '#fff'; ctx.shadowBlur = glowFX(12); }
+    ctx.beginPath();
+    ctx.arc(0, 0, RR, a0 + PERFECT_LO * TAU, a0 + pHi * TAU);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // charge progress
+    const col = inPerfect ? '#ffffff' : sk.t;
+    ctx.strokeStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = glowFX(inPerfect ? 16 : 6);
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, RR, a0, a0 + ch * TAU);
+    ctx.stroke();
+    // marker
+    const ma = a0 + ch * TAU;
+    ctx.fillStyle = col;
+    ctx.shadowBlur = glowFX(8);
+    ctx.beginPath();
+    ctx.arc(Math.cos(ma) * RR, Math.sin(ma) * RR, inPerfect ? 4 : 3, 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -168,10 +205,12 @@ function drawPlayer(): void {
     ctx.restore();
   }
 
-  const sw = G.sweet;
-  const inPerfect = pl.latched && !!sw && sw.reachable && angDiff(pl.ang, sw.center) <= sw.tol;
+  // void-near startle
+  const closeness = clamp(1 - (pl.wy - G.voidY) / 240, 0, 1);
+  const scared = closeness > 0.4;
 
   if (!(G.invuln > 0 && Math.sin(G.t * 40) < 0)) {
+    // perfect "zap" glint right after a perfect release
     if (pl.zap > 0) {
       ctx.save();
       ctx.translate(x, y);
@@ -179,7 +218,7 @@ function drawPlayer(): void {
       ctx.globalAlpha = clamp(pl.zap / 0.25, 0, 1);
       ctx.lineWidth = 2;
       ctx.shadowColor = '#fff';
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = glowFX(12);
       const z = lerp(pl.r + 4, pl.r + 16, 1 - pl.zap / 0.25);
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * TAU + G.t;
@@ -206,7 +245,8 @@ function drawPlayer(): void {
     ctx.rotate(-pl.face);
     const ex = Math.cos(pl.face);
     const ey = Math.sin(pl.face);
-    const eyeR = inPerfect ? 3.0 : 2.6;
+    const eyeR = scared ? 3.3 : inPerfect ? 3.0 : 2.6;
+    const pupil = scared ? 1.0 : 1.3;
     for (const o of [-1, 1]) {
       const px = ey * o * 3.2;
       const py = -ex * o * 3.2;
@@ -216,18 +256,19 @@ function drawPlayer(): void {
       ctx.fill();
       ctx.fillStyle = '#0a0720';
       ctx.beginPath();
-      ctx.arc(px + ex * 3.2, py + ey * 3.2, 1.3, 0, TAU);
+      ctx.arc(px + ex * 3.2, py + ey * 3.2, pupil, 0, TAU);
       ctx.fill();
     }
     ctx.restore();
   }
 }
 
+/* Predicted arc — constant launch speed, so the preview always matches the real flight exactly. */
 function drawTrajectory(): void {
   const { ctx, W } = view;
   const G = state.G;
   const pl = G.player;
-  if (!settings.aimPreview || !pl.latched || G.dead) return;
+  if (!settings.aimPreview || !pl.latched) return;
   const sk = skin();
   const tx = -Math.sin(pl.ang) * pl.dir;
   const ty = Math.cos(pl.ang) * pl.dir;
@@ -235,28 +276,32 @@ function drawTrajectory(): void {
   let y = pl.wy;
   let vx = tx * LAUNCH;
   let vy = ty * LAUNCH;
-  const h = 1 / 60;
-  const steps = 46;
+  const dt = 1 / 60;
+  const pad = curCatchPad();
+  // step count shrinks slightly with height (gentle skill ramp: 70 -> 48)
+  const steps = Math.round(lerp(70, 48, clamp(G.height / 600, 0, 1)));
   ctx.save();
   ctx.fillStyle = sk.c;
   for (let i = 0; i < steps; i++) {
-    vy -= G_FALL * h;
-    x += vx * h;
-    y += vy * h;
-    if (x < pl.r) { x = pl.r; vx = Math.abs(vx) * WALL; }
-    if (x > W - pl.r) { x = W - pl.r; vx = -Math.abs(vx) * WALL; }
+    vy -= G_FALL * dt;
+    x += vx * dt;
+    y += vy * dt;
+    if (x < pl.r) { x = pl.r; vx = Math.abs(vx) * WALL_BOUNCE; }
+    if (x > W - pl.r) { x = W - pl.r; vx = -Math.abs(vx) * WALL_BOUNCE; }
     let hitN = false;
     for (const n of G.nodes) {
+      if (n.type === 'spike') continue;
       if (n === pl.node) continue;
-      if (Math.hypot(x - n.wx, y - n.wy) < n.r + pl.r + CATCH_PAD) { hitN = true; break; }
+      if (n === pl.lastReleased) continue;
+      if (Math.hypot(x - n.wx, y - n.wy) < n.r + pl.r + pad) { hitN = true; break; }
     }
     if (i % 3 === 0) {
-      ctx.globalAlpha = clamp(1 - i / steps, 0, 0.5);
+      ctx.globalAlpha = clamp(1 - i / steps, 0, 0.6);
       ctx.beginPath();
       ctx.arc(x, sY(y), 2.2, 0, TAU);
       ctx.fill();
     }
-    if ((hitN && i > 2) || y < G.voidY) break;
+    if ((hitN && i > 3) || y < G.voidY) break;
   }
   ctx.restore();
 }
@@ -284,9 +329,9 @@ function drawVoid(): void {
 }
 
 const TUT_LINES = [
-  'TAP IN THE GLOWING GATE',
-  'FLY UP, ONE GATE AT A TIME',
-  'HIT THE BRIGHT CENTER FOR PERFECT',
+  'TAP TO RELEASE',
+  'RELEASE IN THE GLOW = PERFECT',
+  'CLIMB BEFORE THE VOID CATCHES YOU',
 ];
 
 function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'aim', col: string): void {
@@ -338,16 +383,15 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
 }
 
 export function drawTopToggles(): void {
-  const { SAFE_TOP } = view;
+  const { W, SAFE_TOP } = view;
   const s = 42;
   const pad = 12;
   const top = pad + SAFE_TOP;
   btn('mute', pad, top, s, s, () => setMuted(!settings.muted));
   drawIconBtn(pad, top, s, settings.muted ? 'mute' : 'sound', settings.muted ? '#5b6488' : '#2ff3e0');
-  const x2 = pad + s + 8;
-  // QA toggle: trajectory preview on/off (the glowing gate always stays on)
-  btn('aim', x2, top, s, s, () => setAimPreview(!settings.aimPreview));
-  drawIconBtn(x2, top, s, 'aim', settings.aimPreview ? '#2ff3e0' : '#5b6488');
+  // aim toggle on the right (mirrors the mute button)
+  btn('aim', W - pad - s, top, s, s, () => setAimPreview(!settings.aimPreview));
+  drawIconBtn(W - pad - s, top, s, 'aim', settings.aimPreview ? '#2ff3e0' : '#5b6488');
 }
 
 export function renderPlay(): void {
@@ -385,7 +429,6 @@ export function renderPlay(): void {
     }
     ctx.restore();
   }
-  drawGate();
   drawTrajectory();
   drawPlayer();
 
@@ -403,12 +446,13 @@ export function renderPlay(): void {
 
   // HUD
   text(G.height + ' m', W / 2, 40 + SAFE_TOP, 30, '#fff', 800, 16, 'center', "'Unbounded'");
-  if (G.combo > 1) text('PERFECT x' + G.combo, W / 2, 72 + SAFE_TOP, 15, '#ffb020', 700, 8);
+  if (G.mult > 1) text('x' + G.mult, W / 2, 72 + SAFE_TOP, 16, '#ffb020', 700, 10);
   text('◎ ' + (Profile.coins + G.coins), W - 16, 28 + SAFE_TOP, 14, '#ffe39b', 700, 6, 'right');
+  if (G.combo > 2) text(G.combo + ' chain', 16, 28 + SAFE_TOP, 13, skin().t, 600, 4, 'left');
 
   if (G.tut >= 0) {
     ctx.globalAlpha = clamp(1 - (G.tutT - 3) / 1.5, 0, 1);
-    text(TUT_LINES[G.tut], W / 2, H * 0.72, 18, '#fff', 700, 10);
+    text(TUT_LINES[G.tut], W / 2, H * 0.7, 18, '#fff', 700, 10);
     ctx.globalAlpha = 1;
   }
   if (G.toast) {

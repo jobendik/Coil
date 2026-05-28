@@ -77,19 +77,19 @@ function thr(name: string, ms: number): boolean {
 }
 
 export const SFX = {
-  fling(): void {
-    if (!thr('fling', 40)) return;
-    noise(0.1, 0.08, 1400);
-    tone(300, 0.1, 'sawtooth', 0.07, 180);
+  whoosh(ch: number): void {
+    if (!thr('whoosh', 50)) return;
+    noise(0.16, 0.12 + ch * 0.12, 900 + ch * 1400);
+    tone(180 + ch * 260, 0.12, 'sawtooth', 0.1, -120);
   },
   catch(c: number): void {
-    if (!thr('catch', 40)) return;
-    tone(440 + Math.min(c, 12) * 40, 0.08, 'triangle', 0.14, 90);
+    if (!thr('catch', 45)) return;
+    tone(420 + Math.min(c, 12) * 55, 0.09, 'triangle', 0.16, 120);
   },
   perfect(c: number): void {
-    if (!thr('perfect', 50)) return;
-    tone(720 + Math.min(c, 12) * 55, 0.1, 'triangle', 0.18, 240);
-    setTimeout(() => tone(1180, 0.09, 'sine', 0.13), 50);
+    if (!thr('perfect', 60)) return;
+    tone(740 + Math.min(c, 10) * 60, 0.1, 'triangle', 0.18, 260);
+    setTimeout(() => tone(1110, 0.1, 'sine', 0.14), 55);
   },
   coin(): void {
     if (!thr('coin', 35)) return;
@@ -102,7 +102,7 @@ export const SFX = {
     tone(300, 0.2, 'sine', 0.16, 500);
   },
   milestone(): void {
-    [659, 880, 1175].forEach((f, i) => setTimeout(() => tone(f, 0.15, 'triangle', 0.17), i * 65));
+    [659, 880, 1175].forEach((f, i) => setTimeout(() => tone(f, 0.16, 'triangle', 0.17), i * 70));
   },
   unlock(): void {
     [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.14, 'triangle', 0.16), i * 80));

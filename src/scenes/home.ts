@@ -7,11 +7,10 @@ import { TAU, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { drawBG, drawTopToggles } from './play';
 import { MILESTONES, SKINS } from '../config';
-import { resetRun } from '../game/state';
 
-function startPlay(): void {
-  resetRun();
-  state.scene = 'play';
+let onPlayRequested: () => void = () => { /* injected by main.ts */ };
+export function setPlayHandler(fn: () => void): void {
+  onPlayRequested = fn;
 }
 
 function nextGoalLine(): string {
@@ -31,7 +30,7 @@ export function renderHome(dt: number): void {
   homeT += dt;
   drawBG();
   const cx = W / 2;
-  const cy = H * 0.32;
+  const cy = H * 0.34;
   const sk = skin();
   const ang = homeT * 1.6;
   const R = 64;
@@ -41,19 +40,6 @@ export function renderHome(dt: number): void {
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.arc(cx, cy, R, 0, TAU);
-  ctx.stroke();
-  ctx.restore();
-
-  // a hint of the gate on the home logo
-  ctx.save();
-  ctx.strokeStyle = sk.t;
-  ctx.globalAlpha = 0.7;
-  ctx.lineWidth = 6;
-  ctx.lineCap = 'round';
-  ctx.shadowColor = sk.t;
-  ctx.shadowBlur = 12;
-  ctx.beginPath();
-  ctx.arc(cx, cy, R, -0.5, 0.5);
   ctx.stroke();
   ctx.restore();
 
@@ -103,8 +89,8 @@ export function renderHome(dt: number): void {
   }
   ctx.restore();
 
-  text('COIL', cx, cy - 118, 64, '#fff', 800, 26, 'center', "'Unbounded'");
-  text('Tap in the glowing gate · climb the void', cx, cy - 76, 13, '#9fb0e0', 600, 0);
+  text('COIL', cx, cy - 120, 64, '#fff', 800, 26, 'center', "'Unbounded'");
+  text('Release to fly · nail the glow for combos', cx, cy - 78, 13, '#9fb0e0', 600, 0);
 
   const lp = Profile.levelProgress();
   text('BEST  ' + Profile.best + ' m', cx, H * 0.55, 22, sk.t, 700, 8);
@@ -151,7 +137,7 @@ export function renderHome(dt: number): void {
   ctx.fill();
   ctx.restore();
   text('PLAY', W / 2, pyy + ph / 2, 22, '#04030a', 800, 0, 'center', "'Unbounded'");
-  btn('play', pxx, pyy, pw, ph, () => startPlay());
+  btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
 
   const sw = W * 0.62;
   const sh = 46;

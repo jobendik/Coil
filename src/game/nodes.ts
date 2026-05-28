@@ -2,102 +2,61 @@ import type { Node, NodeType } from '../types';
 import { view } from '../core/canvas';
 import { state } from './state';
 import { TAU, clamp, lerp, rand } from '../core/utils';
-import { gateWidth } from './physics';
 
 export function genNode(): void {
   const G = state.G;
   const { W } = view;
   const idx = G.nodes.length;
+  const hm = G.lastNodeY / 12;                       // approx. meters at this point
+  const opening = idx < 4;                           // first hops are nearly vertical
+  const easy = idx < 8 || hm < 60;
+  const diff = clamp(hm / 600, 0, 1);
+
+  const gapMin = opening ? 80 : easy ? 85 : 108;
+  const gapMax = opening ? 100 : easy ? 112 : lerp(140, 195, diff);
+  const gap = rand(gapMin, gapMax);
+  const ny = G.lastNodeY + gap;
   const prev = G.nodes[G.nodes.length - 1];
-  const hm = G.lastNodeY / 12;
-  const easy = idx < 6 || hm < 55;
-  const diff = clamp(hm / 650, 0, 1);
-  const gap = easy ? rand(92, 118) : rand(108, lerp(135, 172, diff));
-  let ny = G.lastNodeY + gap;
-  const maxOff = Math.min(gap * 0.7, easy ? 44 : lerp(64, 100, diff));
-  let nx = clamp((prev ? prev.wx : W / 2) + rand(-maxOff, maxOff), 52, W - 52);
+
+  // horizontal offset bounded to a reachable cone (~0.9*gap) and softened by difficulty
+  const maxOff = Math.min(gap * 0.9, opening ? 26 : easy ? 55 : lerp(75, 140, diff));
+  const nx = clamp((prev ? prev.wx : W / 2) + rand(-maxOff, maxOff), 50, W - 50);
+
+  // node tiers unlock gradually with height
   let type: NodeType = 'normal';
   let r = 18;
-
-  // NOTE: 'move' nodes are intentionally NOT generated. A moving target drifts during the
-  // ~0.4s flight, so the gate (which aims at the target's position at release) cannot stay
-  // truthful without lead-prediction. Until that exists, we keep every gate honest by using
-  // only static targets. The move-node update/recompute code below is left dormant so moving
-  // nodes can be re-enabled later if a predictive gate is added.
   if (!easy) {
     const roll = Math.random();
-    if (hm > 140 && roll < 0.12 + diff * 0.10) {
-      type = 'small';
-      r = 13;
-    }
+    if (hm > 120 && roll < 0.10 + diff * 0.10) { type = 'small'; r = 12; }
+    else if (hm > 200 && roll < 0.24 + diff * 0.12) { type = 'move'; r = 16; }
   }
-  if (!easy && hm > 150 && Math.random() < 0.05) {
-    type = 'bonus';
-    r = 19;
-  }
-
-  // FAIRNESS: the player orbits prev and flings to this node. Guarantee the gate from prev
-  // to here is comfortably hittable for EITHER arrival direction; if not, pull this node
-  // toward straight-up over prev (which always widens the window). Easy jumps are always
-  // fair, so we skip the (more expensive) check for them. Uses base positions.
-  if (prev && !easy) {
-    const pbx = prev.type === 'move' ? prev.baseX : prev.wx;
-    const MIN_FAIR = 0.30;
-    const pivot: Node = { wx: pbx, wy: prev.wy, r: prev.r, type: 'normal', baseX: pbx, next: null };
-    let cw = nx;
-    let cy = ny;
-    let bestW = -1;
-    let bw = nx;
-    let by = ny;
-    let tries = 0;
-    while (tries < 6) {
-      const cand: Node = { wx: cw, wy: cy, r, type: 'normal', baseX: cw, next: null };
-      const w = Math.min(gateWidth(pivot, cand, 1), gateWidth(pivot, cand, -1));
-      if (w > bestW) {
-        bestW = w;
-        bw = cw;
-        by = cy;
-      }
-      if (w >= MIN_FAIR) break;
-      cw = lerp(cw, pbx, 0.5);
-      cy = lerp(cy, prev.wy + Math.min(ny - prev.wy, 130), 0.35);
-      tries++;
-    }
-    if (bestW < MIN_FAIR) {
-      bw = pbx;
-      by = prev.wy + 110;
-    } // last resort: straight up, modest gap — always fair
-    nx = clamp(bw, 52, W - 52);
-    ny = by;
-  }
+  // rare bonus (gold)
+  if (!easy && hm > 150 && Math.random() < 0.04) { type = 'bonus'; r = 19; }
 
   const node: Node = {
-    wx: nx, wy: ny, r, type, baseX: nx, next: null,
-    // amp: dormant — 'move' nodes are not generated (see note above); kept zero
-    // so the moving-node update code in update.ts remains a no-op if re-enabled.
-    amp: 0,
+    wx: nx, wy: ny, r, type, baseX: nx,
+    amp: type === 'move' ? rand(35, 80) : 0,
     ph: rand(0, TAU),
-    spd: rand(0.7, 1.2),
+    spd: rand(0.7, 1.3),
+    pts: type === 'small' ? 3 : 1,
     pulse: rand(0, TAU),
   };
-  if (prev) prev.next = node;
   G.nodes.push(node);
   G.lastNodeY = ny;
 
-  // collectibles
+  // spikes appear only at altitude, always offset from the line of nodes, never during onboarding
+  if (!easy && hm > 320 && Math.random() < 0.06 + diff * 0.14) {
+    const sx = clamp(nx + (nx < W / 2 ? rand(95, 150) : -rand(95, 150)), 28, W - 28);
+    G.nodes.push({
+      wx: sx, wy: ny + rand(-26, 26), r: 15, type: 'spike', baseX: sx,
+      amp: 0, pulse: rand(0, TAU),
+    });
+  }
+
+  // collectibles: sparks often, shields rare and high-altitude
   if (Math.random() < 0.5) {
-    G.sparks.push({
-      wx: clamp(nx + rand(-55, 55), 20, W - 20),
-      wy: ny - gap * 0.5,
-      got: false,
-      kind: 'spark',
-    });
-  } else if (hm > 240 && Math.random() < 0.05) {
-    G.sparks.push({
-      wx: clamp(nx + rand(-50, 50), 20, W - 20),
-      wy: ny - gap * 0.5,
-      got: false,
-      kind: 'shield',
-    });
+    G.sparks.push({ wx: clamp(nx + rand(-60, 60), 20, W - 20), wy: ny - gap * 0.5, got: false, kind: 'spark' });
+  } else if (hm > 250 && Math.random() < 0.05) {
+    G.sparks.push({ wx: clamp(nx + rand(-50, 50), 20, W - 20), wy: ny - gap * 0.5, got: false, kind: 'shield' });
   }
 }

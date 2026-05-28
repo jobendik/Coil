@@ -1,19 +1,17 @@
 import type { Skin, Zone, Goal } from './types';
 
 /* =========================================================================
-   PHYSICS CONSTANTS (Hybrid: constant launch, forgiving survival)
+   PHYSICS CONSTANTS (Hybrid: constant launch, perfect band is reward-only)
    ========================================================================= */
-export const OMEGA = 2.7;          // orbit angular speed (rad/s) — rhythm of the gate
-export const ORBIT = 54;           // fixed orbit radius (predictable timing)
-export const LAUNCH = 580;         // CONSTANT fling speed (no charge, no overcharge)
-export const G_FALL = 520;         // gravity during flight (floaty arcs)
-export const WALL = 0.82;          // side-wall bounce
-export const CATCH_PAD = 22;       // generous auto-latch forgiveness (survival)
-export const GATE_MARGIN = 6;      // the gate UNDER-promises: it only lights up angles whose closest
-                                   // approach is within T.r+pl.r+6, while the real catch is +22. That
-                                   // 16px buffer means small sub-step dips (wall bounces, grazes) can
-                                   // never make a lit gate lie. Verified: 0 dishonest gates / 24k nodes.
-export const PERFECT_TOL0 = 0.36;  // base perfect angular window (radians, narrows w/ height)
+export const OMEGA = 3.05;        // orbit angular speed (rad/s)
+export const G_FALL = 720;        // gravity during flight (px/s²)
+export const LAUNCH = 780;        // CONSTANT fling speed — survival never depends on charge
+export const CHARGE_TIME = 0.70;  // seconds for one full sweep of the ping-ponging charge
+export const MINR = 28;           // orbit radius lower clamp (close latch = tight orbit)
+export const MAXR = 82;           // orbit radius upper clamp
+export const CATCH_PAD = 24;      // base catch generosity (narrows with height — see curCatchPad)
+export const PERFECT_LO = 0.60;   // start of the perfect band (perfectHi() returns the upper edge)
+export const WALL_BOUNCE = 0.82;
 
 export const DEBUG = false;
 
@@ -26,8 +24,8 @@ export const TITLES = [
 /* ---------- skins (cosmetic only — never pay-to-win) ---------- */
 export const SKINS: Skin[] = [
   { id: 'cyan',   name: 'Pulse', price: 0,    c: '#2ff3e0', t: '#9ffff2' },
-  { id: 'amber',  name: 'Ember', price: 250,  c: '#ffb020', t: '#ffe39b' },
-  { id: 'pink',   name: 'Neon',  price: 550,  c: '#ff4d8d', t: '#ffb0cd' },
+  { id: 'amber',  name: 'Ember', price: 300,  c: '#ffb020', t: '#ffe39b' },
+  { id: 'pink',   name: 'Neon',  price: 600,  c: '#ff4d8d', t: '#ffb0cd' },
   { id: 'lime',   name: 'Acid',  price: 900,  c: '#9be35a', t: '#dcffb0' },
   { id: 'violet', name: 'Void',  price: 1500, c: '#a76bff', t: '#dcc6ff' },
   { id: 'white',  name: 'Prism', price: 2600, c: '#ffffff', t: '#cfe9ff' },
@@ -35,10 +33,10 @@ export const SKINS: Skin[] = [
 
 /* ---------- daily mission goal pool ---------- */
 export const GOALS: Goal[] = [
-  { id: 'height', t: 300, kind: 'runmax', text: (n) => `Reach ${n} m in one run`,    reward: 90 },
-  { id: 'perf',   t: 16,  kind: 'cum',    text: (n) => `Land ${n} perfect flings`,    reward: 90 },
-  { id: 'combo',  t: 10,  kind: 'runmax', text: (n) => `Chain an x${n} combo`,        reward: 100 },
-  { id: 'coins',  t: 180, kind: 'cum',    text: (n) => `Collect ${n} coins`,          reward: 80 },
+  { id: 'height', t: 280, kind: 'runmax', text: (n) => `Reach ${n} m in one run`,    reward: 90 },
+  { id: 'perf',   t: 14,  kind: 'cum',    text: (n) => `Land ${n} perfect releases`, reward: 90 },
+  { id: 'combo',  t: 9,   kind: 'runmax', text: (n) => `Chain an x${n} combo`,        reward: 100 },
+  { id: 'coins',  t: 160, kind: 'cum',    text: (n) => `Collect ${n} coins`,          reward: 80 },
   { id: 'runs',   t: 6,   kind: 'cum',    text: (n) => `Finish ${n} runs`,            reward: 80 },
 ];
 

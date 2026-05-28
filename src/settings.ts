@@ -3,7 +3,7 @@ import { Store } from './core/store';
 export const settings = {
   muted: Store.get<boolean>('coil_muted', false),
   aimPreview: Store.get<boolean>('coil_aim', true),
-  seenTut: Store.get<boolean>('coil_seen_tut_h', false),
+  seenTut: Store.get<boolean>('coil_seen_tut_v2', false),
 };
 
 export function setMuted(v: boolean): void {
@@ -18,5 +18,5 @@ export function setAimPreview(v: boolean): void {
 
 export function setSeenTut(v: boolean): void {
   settings.seenTut = v;
-  Store.set('coil_seen_tut_h', v);
+  Store.set('coil_seen_tut_v2', v);
 }

@@ -1,6 +1,6 @@
 export type Scene = 'home' | 'play' | 'over' | 'shop';
 
-export type NodeType = 'normal' | 'small' | 'bonus' | 'move';
+export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike';
 
 export interface Node {
   wx: number;
@@ -8,10 +8,10 @@ export interface Node {
   r: number;
   type: NodeType;
   baseX: number;
-  next: Node | null;
   amp?: number;
   ph?: number;
   spd?: number;
+  pts?: number;
   pulse?: number;
 }
 
@@ -31,8 +31,11 @@ export interface Player {
   vy: number;
   latched: boolean;
   node: Node;
+  R: number;           // orbit radius — set from latch distance, clamped [MINR, MAXR]
   ang: number;
   dir: 1 | -1;
+  charge: number;      // 0..1, ping-pongs while latched (perfect band is a slice of this)
+  chDir: 1 | -1;       // sweep direction
   r: number;
   trail: Array<{ x: number; y: number }>;
   face: number;
@@ -41,18 +44,18 @@ export interface Player {
   lastReleasedT: number;
 }
 
-export interface SweetZone {
-  lo: number;
-  hi: number;
-  center: number;
-  tol: number;
-  reachable: boolean;
-}
-
 export interface Toast {
   txt: string;
   t: number;
   c: string;
+}
+
+/** Run-segment high-water marks. bankRun() awards deltas against these so a
+ *  rewarded revive continues the SAME run without ever double-counting. */
+export interface BankedHwm {
+  h: number;
+  perf: number;
+  mc: number;
 }
 
 export interface GameState {
@@ -62,27 +65,29 @@ export interface GameState {
   sparks: Spark[];
   maxY: number;
   height: number;
-  combo: number;
+  combo: number;       // pure catch chain (resets only on hit)
   maxCombo: number;
+  mult: number;        // perfect multiplier (1..9), resets on a non-perfect release
   perfects: number;
   coins: number;
-  flings: number;
+  releases: number;
   lastNodeY: number;
   dead: boolean;
   deadT: number;
   voidY: number;
+  vbase: number;       // base void rise rate (px/s)
   shield: boolean;
   invuln: number;
   beatBest: boolean;
   zone: number;
   nextMilestone: number;
   toast: Toast | null;
-  sweet: SweetZone | null;
-  target: Node | null;
   tut: number;
   tutT: number;
+  revivedThisRun: boolean;
+  dailyRunCounted: boolean;
+  banked: BankedHwm;
   player: Player;
-  _sweetTick?: number;
 }
 
 export interface Skin {
