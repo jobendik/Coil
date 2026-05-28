@@ -1,6 +1,7 @@
 import type { GameState, Node, Scene } from '../types';
 import { view } from '../core/canvas';
 import { settings } from '../settings';
+import { Profile } from './profile';
 
 /* Singleton container for runtime-mutable state. Splitting into per-domain
    slots keeps modules from reaching into a 30-field "G" anonymously. */
@@ -12,6 +13,9 @@ export const state = {
 export function resetRun(): void {
   const { W, H } = view;
   const start: Node = { wx: W / 2, wy: -90, r: 18, type: 'normal', baseX: W / 2, next: null };
+  // markRunStart returns true on the FIRST run of a new calendar day, and rolls
+  // the login streak forward as a side effect.
+  const firstOfDay = Profile.markRunStart();
   const G: GameState = {
     t: 0,
     cameraY: -0.42 * H,
@@ -41,6 +45,13 @@ export function resetRun(): void {
     revivedThisRun: false,
     dailyRunCounted: false,
     banked: { h: 0, perf: 0, mc: 0 },
+    firstFlingPending: true,
+    savesUsedThisRun: 0,
+    comboTierReached: -1,
+    comboFlash: 0,
+    comboFlashColor: '#fff',
+    firstRunOfDay: firstOfDay,
+    coinMult: firstOfDay ? 2 : 1,
     player: {
       wx: W / 2,
       wy: -30,
@@ -64,4 +75,16 @@ export function resetRun(): void {
 /** Convert a world-space Y to screen-space Y (camera applied, screen origin top-left). */
 export function sY(wy: number): number {
   return view.H - (wy - state.G.cameraY);
+}
+
+/**
+ * Surface a one-time "FIRST RUN BONUS · 2× COINS" toast at run start. Called
+ * from main.startPlay after resetRun so the toast appears as soon as the play
+ * scene draws (and isn't clobbered by any other toast the first tick may set).
+ */
+export function maybeShowStartToast(): void {
+  const G = state.G;
+  if (G.firstRunOfDay) {
+    G.toast = { txt: `2× COINS · DAY ${Profile.streak}`, t: 2.0, c: '#ffe39b' };
+  }
 }

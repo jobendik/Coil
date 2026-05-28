@@ -3,7 +3,7 @@ import { state } from '../game/state';
 import { skin, Owned } from '../game/skins';
 import { Profile } from '../game/profile';
 import { Daily } from '../game/daily';
-import { TAU, rr, text } from '../core/utils';
+import { TAU, clamp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { drawBG, drawTopToggles } from './play';
 import { MILESTONES, SKINS } from '../config';
@@ -14,7 +14,7 @@ export function setPlayHandler(fn: () => void): void {
 }
 
 function nextGoalLine(): string {
-  if (!Daily.d.done) return "Complete today's mission";
+  if (!Daily.allDone()) return "Complete today's missions";
   const nm = MILESTONES.find((m) => m > Profile.best);
   if (nm && Profile.best >= nm * 0.6) return 'Reach ' + nm + ' m';
   if (Profile.best > 0) return 'Beat your best: ' + Profile.best + ' m';
@@ -106,33 +106,64 @@ export function renderHome(dt: number): void {
   text('Tap in the glowing gate · climb the void', cx, cy - 76, 13, '#9fb0e0', 600, 0);
 
   const lp = Profile.levelProgress();
-  text('BEST  ' + Profile.best + ' m', cx, H * 0.55, 22, sk.t, 700, 8);
-  text(Profile.title() + '  ·  Level ' + lp.l, cx, H * 0.55 + 30, 13, '#9fb0e0', 600, 0);
+  text('BEST  ' + Profile.best + ' m', cx, H * 0.48, 22, sk.t, 700, 8);
+  text(Profile.title() + '  ·  Level ' + lp.l, cx, H * 0.48 + 22, 12, '#9fb0e0', 600, 0);
 
-  const dg = Daily.g;
-  const bx = W * 0.12;
-  const bw = W * 0.76;
-  const by = H * 0.625;
-  ctx.fillStyle = '#8a93bf';
-  ctx.font = "600 11px 'Sora'";
-  ctx.textAlign = 'left';
+  // Streak + first-run-of-day badges — the single biggest return-day driver.
+  // We center one or two pills horizontally so neither falls into the mission
+  // rows below; pills are skipped entirely when not applicable.
+  const showStreak = Profile.streak >= 2;
+  const showBonus = !Profile.hasPlayedToday();
+  if (showStreak || showBonus) {
+    const pillY = H * 0.48 + 46;
+    if (showStreak && showBonus) {
+      text('🔥 ' + Profile.streak + '-DAY', cx - 62, pillY, 11, '#ff9b50', 800, 4, 'center');
+      text('2× FIRST RUN', cx + 62, pillY, 11, '#ffe39b', 800, 4, 'center');
+    } else if (showStreak) {
+      text('🔥 ' + Profile.streak + '-DAY STREAK', cx, pillY, 11, '#ff9b50', 800, 4, 'center');
+    } else {
+      text('2× COINS  ·  FIRST RUN', cx, pillY, 11, '#ffe39b', 800, 4, 'center');
+    }
+  }
+
+  // Three compact mission rows
+  const bx = W * 0.10;
+  const bw = W * 0.80;
+  const rowY = H * 0.60;
+  const rowH = 26;
+  const missions = Daily.missions();
   ctx.textBaseline = 'middle';
-  ctx.fillText('DAILY MISSION', bx, by - 4);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = Daily.d.done ? '#9be35a' : '#ffe39b';
-  ctx.fillText(Daily.d.done ? 'COMPLETE ✓' : '+' + dg.reward + ' ◎', bx + bw, by - 4);
+  ctx.font = "700 10px 'Sora'";
   ctx.textAlign = 'left';
-  ctx.fillStyle = '#dfe7ff';
-  ctx.font = "600 13px 'Sora'";
-  ctx.fillText(dg.text(dg.t), bx, by + 16);
-  rr(bx, by + 30, bw, 8, 4);
-  ctx.fillStyle = 'rgba(255,255,255,.08)';
-  ctx.fill();
-  rr(bx, by + 30, bw * Daily.pct(), 8, 4);
-  ctx.fillStyle = Daily.d.done ? '#9be35a' : '#2ff3e0';
-  ctx.fill();
+  ctx.fillStyle = '#8a93bf';
+  ctx.fillText('DAILY MISSIONS', bx, rowY - 12);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = Daily.allDone() ? '#9be35a' : '#ffe39b';
+  const completedCount = missions.filter((m) => m.done).length;
+  ctx.fillText(completedCount + ' / ' + missions.length, bx + bw, rowY - 12);
+  for (let i = 0; i < missions.length; i++) {
+    const m = missions[i];
+    const g = Daily.goalFor(m);
+    const y = rowY + i * rowH;
+    const pct = clamp(m.prog / g.t, 0, 1);
+    // text
+    ctx.textAlign = 'left';
+    ctx.font = "600 11px 'Sora'";
+    ctx.fillStyle = m.done ? '#9be35a' : '#dfe7ff';
+    ctx.fillText((m.done ? '✓ ' : '') + g.text(g.t), bx, y);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = m.done ? '#9be35a' : '#ffe39b';
+    ctx.fillText(m.done ? '+' + g.reward + ' ◎' : Math.min(m.prog, g.t) + '/' + g.t, bx + bw, y);
+    // bar
+    rr(bx, y + 10, bw, 5, 3);
+    ctx.fillStyle = 'rgba(255,255,255,.07)';
+    ctx.fill();
+    rr(bx, y + 10, bw * pct, 5, 3);
+    ctx.fillStyle = m.done ? '#9be35a' : (g.tier === 'hard' ? '#ff4d8d' : g.tier === 'med' ? '#2ff3e0' : '#9be35a');
+    ctx.fill();
+  }
 
-  text('NEXT  ·  ' + nextGoalLine(), cx, H * 0.735, 13, '#ffe39b', 700, 6);
+  text('NEXT  ·  ' + nextGoalLine(), cx, H * 0.74, 12, '#ffe39b', 700, 6);
 
   const pw = W * 0.62;
   const ph = 60;

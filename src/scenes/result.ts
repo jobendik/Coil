@@ -17,6 +17,11 @@ interface ResultBar {
   val: string;
 }
 
+// How long after death the result screen must be visible before the
+// "tap anywhere to play again" zone activates. Just long enough for the player
+// to register the new stats — short enough that the loop stays addictive.
+const REPLAY_ZONE_DELAY = 0.55;
+
 /**
  * `requestReplay` and `requestRevive` are injected by main.ts so the result
  * screen can drive midgame interstitials / rewarded ads without importing
@@ -50,10 +55,10 @@ export const Result = {
         val: '+' + d.xpGain + ' XP',
       },
       {
-        label: 'DAILY MISSION',
+        label: Daily.allDone() ? 'DAILIES COMPLETE' : 'DAILY MISSIONS',
         to: Daily.pct(),
-        color: Daily.d.done ? '#9be35a' : '#ffb020',
-        val: Daily.d.done ? 'COMPLETE ✓' : Math.min(Daily.d.prog, Daily.g.t) + '/' + Daily.g.t,
+        color: Daily.allDone() ? '#9be35a' : '#ffb020',
+        val: this.dailyValLabel(),
       },
       {
         label: this.nextSkinLabel(),
@@ -63,6 +68,12 @@ export const Result = {
       },
     ];
     this.anim = this.bars.map(() => 0);
+  },
+
+  dailyValLabel(): string {
+    const ms = Daily.missions();
+    const done = ms.filter((m) => m.done).length;
+    return `${done}/${ms.length}`;
   },
 
   nextSkin() {
@@ -87,11 +98,22 @@ export const Result = {
 
   nextAction(): string {
     const d = this.d;
-    if (!Daily.d.done) {
-      const g = Daily.g;
-      const left = g.t - Math.min(Daily.d.prog, g.t);
-      if (g.kind === 'cum') return `${left} to go for the daily mission`;
-      return `Reach ${g.t}${g.id === 'combo' ? ' combo' : ' m'} for the daily mission`;
+    // Pick the closest-to-done unfinished mission so the player sees the most
+    // attainable carrot, not the hardest one.
+    const ms = Daily.missions();
+    let bestPct = -1;
+    let bestM: import('../types').MissionState | null = null;
+    for (const m of ms) {
+      if (m.done) continue;
+      const g = Daily.goalFor(m);
+      const pct = clamp(m.prog / g.t, 0, 1);
+      if (pct > bestPct) { bestPct = pct; bestM = m; }
+    }
+    if (bestM) {
+      const g = Daily.goalFor(bestM);
+      const left = g.t - Math.min(bestM.prog, g.t);
+      if (g.kind === 'cum') return `${left} to go: ${g.text(g.t).toLowerCase()}`;
+      return g.text(g.t);
     }
     const nm = MILESTONES.find((m) => m > d.h);
     if (nm && d.h >= nm * 0.7) return `Just ${nm - d.h} m to the ${nm} m milestone`;
@@ -148,7 +170,7 @@ export const Result = {
     }
     if (d.leveledUp) text('LEVEL UP!', W / 2, by + 4, 16, '#2ff3e0', 800, 10);
     if (d.dailyJustDone) {
-      text('MISSION COMPLETE  ◎+' + Daily.g.reward,
+      text('MISSION COMPLETE  ◎+' + d.dailyReward,
         W / 2, by + (d.leveledUp ? 26 : 4), 14, '#9be35a', 700, 8);
     }
     const G = state.G;
@@ -219,6 +241,18 @@ export const Result = {
     btn('rmenu', px + half + 12, py, half, 46, () => {
       state.scene = 'home';
     });
+
+    // "Tap anywhere to play again" — registered LAST so specific buttons win
+    // their bounds. After a short delay (long enough to read the new stats)
+    // any empty-area tap restarts the run instantly.
+    if (this.t > REPLAY_ZONE_DELAY) {
+      const hintAlpha = clamp((this.t - REPLAY_ZONE_DELAY) * 1.4, 0, 0.55);
+      ctx.save();
+      ctx.globalAlpha = hintAlpha;
+      text('TAP TO PLAY AGAIN', W / 2, H * 0.95, 11, '#9fb0e0', 700, 0);
+      ctx.restore();
+      btn('rtap', 0, 0, W, H, () => onReplayRequested());
+    }
   },
 
   stat(label: string, val: string, x: number, y: number): void {

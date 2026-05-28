@@ -1,7 +1,7 @@
 import './style.css';
 
 import { initCanvas, resize, view } from './core/canvas';
-import { state, resetRun } from './game/state';
+import { state, resetRun, maybeShowStartToast } from './game/state';
 import { update, release, requestRevive } from './game/update';
 import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
@@ -25,6 +25,7 @@ let paused = false;
 
 function startPlay(): void {
   resetRun();
+  maybeShowStartToast();
   state.scene = 'play';
   CG.gameplayStart();
 }
