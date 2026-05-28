@@ -1,0 +1,83 @@
+import type { FxLevel } from '../types';
+import { view } from './canvas';
+
+export const TAU = Math.PI * 2;
+
+export const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
+export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+export const rand = (a: number, b: number): number => a + Math.random() * (b - a);
+
+export function angDiff(a: number, b: number): number {
+  let d = (a - b) % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return Math.abs(d);
+}
+
+const screenW = window.screen ? window.screen.width : 999;
+const screenH = window.screen ? window.screen.height : 999;
+export const fx = {
+  level: ((window.devicePixelRatio || 1) < 1.5 && Math.min(screenW, screenH) <= 380
+    ? 'medium'
+    : 'high') as FxLevel,
+};
+
+export function glowFX(v: number): number {
+  return fx.level === 'low' ? Math.min(v, 3) : fx.level === 'medium' ? v * 0.55 : v;
+}
+
+export function pcount(n: number): number {
+  return fx.level === 'low' ? Math.ceil(n * 0.4) : fx.level === 'medium' ? Math.ceil(n * 0.7) : n;
+}
+
+export function distPointToSegment(
+  px: number, py: number, ax: number, ay: number, bx: number, by: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const ab2 = abx * abx + aby * aby;
+  const t = ab2 > 0 ? clamp((apx * abx + apy * aby) / ab2, 0, 1) : 0;
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  return Math.hypot(px - cx, py - cy);
+}
+
+export function rr(x: number, y: number, w: number, h: number, r: number): void {
+  const { ctx } = view;
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+export function text(
+  t: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  weight: number = 700,
+  glow: number = 0,
+  align: CanvasTextAlign = 'center',
+  font = "'Sora'",
+): void {
+  const { ctx } = view;
+  ctx.save();
+  ctx.font = `${weight} ${size}px ${font}, sans-serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glowFX(glow);
+  }
+  ctx.fillStyle = color;
+  ctx.fillText(t, x, y);
+  if (glow) ctx.fillText(t, x, y);
+  ctx.restore();
+}
