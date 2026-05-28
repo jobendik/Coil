@@ -15,10 +15,13 @@ import { CG } from '../core/cg';
 import { Result } from '../scenes/result';
 import {
   CATCH_PAD,
+  COMBO_TIERS,
+  DEATH_ANIM,
   G_FALL,
   LAUNCH,
   MILE_REWARD,
   MILESTONES,
+  NEAR_MISS_RADIUS,
   OMEGA,
   ORBIT,
   WALL,
@@ -34,12 +37,13 @@ export function update(dt: number): void {
 
   if (G.invuln > 0) G.invuln -= dt;
   if (pl.zap > 0) pl.zap -= dt;
+  if (G.comboFlash > 0) G.comboFlash = Math.max(0, G.comboFlash - dt * 2.4);
   if (G.dead) {
     G.deadT += dt;
     pl.vy -= G_FALL * dt;
     pl.wx += pl.vx * dt;
     pl.wy += pl.vy * dt;
-    if (G.deadT > 0.55) endRun();
+    if (G.deadT > DEATH_ANIM) endRun();
     return;
   }
 
@@ -113,7 +117,7 @@ export function update(dt: number): void {
   while (G.nextMilestone < MILESTONES.length && G.height >= MILESTONES[G.nextMilestone]) {
     const m = MILESTONES[G.nextMilestone];
     G.nextMilestone++;
-    const rw = MILE_REWARD[m] || 10;
+    const rw = (MILE_REWARD[m] || 10) * G.coinMult;
     G.toast = { txt: m + ' M', t: 1.4, c: '#fff' };
     G.coins += rw;
     SFX.milestone();
@@ -155,10 +159,11 @@ export function update(dt: number): void {
         P.ring(s.wx, sY(s.wy), '#9ffff2', 16, 200);
         Pop.add(s.wx, sY(s.wy), 'SHIELD', '#9ffff2');
       } else {
-        G.coins += 2;
+        const got = 2 * G.coinMult;
+        G.coins += got;
         SFX.coin();
         P.burst(s.wx, sY(s.wy), 6, '#ffe39b', 160, 0.4, 3);
-        Pop.add(s.wx, sY(s.wy), '+2', skin().t);
+        Pop.add(s.wx, sY(s.wy), '+' + got, skin().t);
       }
     }
   }
@@ -196,7 +201,7 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
   SFX.catch(G.combo);
   P.burst(n.wx, sY(n.wy), 8, skin().c, 140, 0.35, 3.5);
   if (n.type === 'bonus') {
-    const g = 25;
+    const g = 25 * G.coinMult;
     G.coins += g;
     SFX.bonus();
     P.ring(n.wx, sY(n.wy), '#ffd24a', 20, 300);
@@ -226,26 +231,52 @@ export function release(): void {
   pl.lastReleased = pl.node;
   pl.lastReleasedT = 0;
   // PERFECT is pure reward: did we fling inside the bright gate?
+  // First fling of a run is ALWAYS perfect — it removes the "tap immediately, die" trap
+  // that destroys retention in the first 5 seconds.
   const sw = G.sweet;
-  const isPerfect = !!sw && sw.reachable && angDiff(pl.ang, sw.center) <= sw.tol;
+  const insideGate = !!sw && sw.reachable && angDiff(pl.ang, sw.center) <= sw.tol;
+  const isPerfect = insideGate || G.firstFlingPending;
   if (isPerfect) {
     G.perfects++;
     G.combo = Math.min(12, G.combo + 1);
     G.maxCombo = Math.max(G.maxCombo, G.combo);
-    const gain = Math.round(3 * G.combo);
+    const gain = Math.round(3 * G.combo) * G.coinMult;
     G.coins += gain;
     SFX.perfect(G.combo);
     buzz(8);
     P.ring(pl.wx, sY(pl.wy), '#fff', 22, 330);
     P.burst(pl.wx, sY(pl.wy), 10, skin().t, 260, 0.5, 4);
-    Pop.add(pl.wx, sY(pl.wy) - 18, `PERFECT x${G.combo}`, '#fff');
+    if (G.firstFlingPending) {
+      Pop.add(pl.wx, sY(pl.wy) - 18, 'FIRST! PERFECT', '#fff');
+    } else {
+      Pop.add(pl.wx, sY(pl.wy) - 18, `PERFECT x${G.combo}`, '#fff');
+    }
     shake(2.5, 0.12);
     pl.zap = 0.25;
+    // Combo milestone fireworks — escalate the dopamine at x3/x5/x8/x12.
+    for (let i = COMBO_TIERS.length - 1; i >= 0; i--) {
+      const tier = COMBO_TIERS[i];
+      if (G.combo >= tier.at && G.comboTierReached < i) {
+        G.comboTierReached = i;
+        const bonus = tier.payout * G.coinMult;
+        G.coins += bonus;
+        G.comboFlash = 1;
+        G.comboFlashColor = tier.color;
+        Pop.add(pl.wx, sY(pl.wy) + 18, `${tier.label}  +${bonus} ◎`, tier.color);
+        P.ring(pl.wx, sY(pl.wy), tier.color, 30 + i * 6, 420 + i * 60);
+        P.burst(pl.wx, sY(pl.wy), 18 + i * 4, tier.color, 320 + i * 50, 0.6, 4);
+        shake(4 + i * 1.2, 0.18 + i * 0.04);
+        SFX.milestone();
+        CG.happy();
+        break;
+      }
+    }
   } else {
     G.combo = Math.max(1, G.combo - 1);
     SFX.fling();
     P.ring(pl.wx, sY(pl.wy), skin().c, 12, 220);
   }
+  G.firstFlingPending = false;
 }
 
 export function hit(cause: 'void' | 'fall' | 'spike'): void {
@@ -261,6 +292,45 @@ export function hit(cause: 'void' | 'fall' | 'spike'): void {
     P.ring(pl.wx, sY(pl.wy), '#9ffff2', 26, 360);
     G.toast = { txt: 'SHIELD USED', t: 1.0, c: '#9ffff2' };
     return;
+  }
+  // Near-miss save: once per run, if a non-spike node is within rescue range, snap to it.
+  // Only fires for 'void' and 'fall' (skill mistakes), not for 'spike' (you ran into death).
+  if (G.savesUsedThisRun < 1 && cause !== 'spike') {
+    let best: import('../types').Node | null = null;
+    let bestD = NEAR_MISS_RADIUS;
+    for (const n of G.nodes) {
+      if (n.type === 'spike') continue;
+      if (n === pl.lastReleased) continue;
+      // Only count nodes ABOVE the rising void — saving you onto a doomed node is cruel.
+      if (n.wy <= G.voidY + 30) continue;
+      const d = Math.hypot(pl.wx - n.wx, pl.wy - n.wy);
+      if (d < bestD) { bestD = d; best = n; }
+    }
+    if (best) {
+      G.savesUsedThisRun = 1;
+      G.invuln = 0.8;
+      pl.latched = true;
+      pl.node = best;
+      pl.ang = Math.atan2(pl.wy - best.wy, pl.wx - best.wx);
+      pl.dir = Math.random() > 0.5 ? 1 : -1;
+      pl.vx = 0;
+      pl.vy = 0;
+      pl.trail.length = 0;
+      pl.wx = best.wx + Math.cos(pl.ang) * ORBIT;
+      pl.wy = best.wy + Math.sin(pl.ang) * ORBIT;
+      pl.lastReleased = null;
+      G.target = best.next;
+      G.combo = Math.max(1, G.combo - 1);     // soft penalty: combo dips by 1 but doesn't reset
+      G.toast = { txt: 'SAVED!', t: 1.0, c: '#9be35a' };
+      P.ring(pl.wx, sY(pl.wy), '#9be35a', 30, 380);
+      P.burst(pl.wx, sY(pl.wy), 16, '#9be35a', 280, 0.5, 4);
+      shake(5, 0.18);
+      SFX.shield();
+      buzz(12);
+      // Recompute the gate against the rescued node so the next decision is honest.
+      computeSweetZone();
+      return;
+    }
   }
   if (G.dead) return;
   G.dead = true;
@@ -297,18 +367,16 @@ export function bankRun(): ResultData {
   const newBest = Profile.setBest(h);
   const leveledUp = Profile.level() > prevLvl;
 
-  const reports: boolean[] = [];
+  let missionRewards = 0;
   if (firstEnd) {
-    reports.push(Daily.report('runs', 1));
+    missionRewards += Daily.report('runs', 1);
     G.dailyRunCounted = true;
   }
-  reports.push(
-    Daily.report('perf', dPerf),
-    Daily.report('coins', coins),
-    Daily.report('height', h),
-    Daily.report('combo', mc),
-  );
-  const dDone = reports.some(Boolean);
+  missionRewards += Daily.report('perf', dPerf);
+  missionRewards += Daily.report('coins', coins);
+  missionRewards += Daily.report('height', h);
+  missionRewards += Daily.report('combo', mc);
+  const dDone = missionRewards > 0;
 
   G.banked.h = h;
   G.banked.perf = perf;
@@ -319,7 +387,7 @@ export function bankRun(): ResultData {
   if (newBest) CG.happy();
   if (leveledUp || dDone || newBest) SFX.unlock();
 
-  return { h, mc, perf, coins, newBest, xpGain, leveledUp, dailyJustDone: dDone };
+  return { h, mc, perf, coins, newBest, xpGain, leveledUp, dailyJustDone: dDone, dailyReward: missionRewards };
 }
 
 export function endRun(): void {
@@ -374,6 +442,8 @@ export function revive(): void {
   G.shield = true;
   G.invuln = 1.6;
   G.combo = 1;
+  G.comboTierReached = -1;     // a fresh combo arc can re-trigger milestone fireworks
+  G.firstFlingPending = true;  // the back-in fling is also free-perfect to relaunch the rhythm
   G.revivedThisRun = true;
   G.toast = { txt: 'BACK IN!', t: 1.4, c: '#9ffff2' };
   P.ring(pl.wx, sY(pl.wy), '#9ffff2', 24, 320);

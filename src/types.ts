@@ -94,6 +94,13 @@ export interface GameState {
   revivedThisRun: boolean;
   dailyRunCounted: boolean;
   banked: BankedHwm;
+  firstFlingPending: boolean;     // guarantees the first fling of a run lands as PERFECT
+  savesUsedThisRun: number;       // near-miss snap-rescue counter (1 allowed)
+  comboTierReached: number;       // highest COMBO_TIERS index already celebrated
+  comboFlash: number;             // 0..1 brief screen-tint pulse on milestones
+  comboFlashColor: string;        // color of the active milestone flash
+  firstRunOfDay: boolean;         // 2× coin bonus active for this run
+  coinMult: number;               // current coin multiplier (1 or 2)
 }
 
 export interface Skin {
@@ -111,6 +118,7 @@ export interface Zone {
 }
 
 export type GoalKind = 'cum' | 'runmax';
+export type GoalTier = 'easy' | 'med' | 'hard';
 
 export interface Goal {
   id: string;
@@ -118,13 +126,18 @@ export interface Goal {
   kind: GoalKind;
   text: (n: number) => string;
   reward: number;
+  tier: GoalTier;
+}
+
+export interface MissionState {
+  idx: number;         // index into GOALS pool
+  prog: number;        // current progress
+  done: boolean;       // whether reward has been granted
 }
 
 export interface DailyData {
   date: string;
-  idx: number;
-  prog: number;
-  done: boolean;
+  missions: MissionState[];     // exactly 3 — easy/med/hard
 }
 
 export interface Particle {
@@ -164,6 +177,7 @@ export interface ResultData {
   xpGain: number;
   leveledUp: boolean;
   dailyJustDone: boolean;
+  dailyReward: number;     // total mission reward granted on this bank (may be 0)
 }
 
 export type FxLevel = 'high' | 'medium' | 'low';

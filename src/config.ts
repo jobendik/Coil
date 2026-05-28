@@ -14,6 +14,10 @@ export const GATE_MARGIN = 6;      // the gate UNDER-promises: it only lights up
                                    // 16px buffer means small sub-step dips (wall bounces, grazes) can
                                    // never make a lit gate lie. Verified: 0 dishonest gates / 24k nodes.
 export const PERFECT_TOL0 = 0.36;  // base perfect angular window (radians, narrows w/ height)
+export const EARLY_EASE_BOOST = 1.6;     // 0-50m perfect tolerance multiplier (new-player ramp)
+export const EARLY_EASE_END = 50;        // height (m) at which the boost decays to 1×
+export const NEAR_MISS_RADIUS = 90;      // world-px radius for the one-per-run save rescue
+export const DEATH_ANIM = 0.30;          // shortened death animation for snappier restart loop
 
 export const DEBUG = false;
 
@@ -33,13 +37,34 @@ export const SKINS: Skin[] = [
   { id: 'white',  name: 'Prism', price: 2600, c: '#ffffff', t: '#cfe9ff' },
 ];
 
-/* ---------- daily mission goal pool ---------- */
+/* ---------- daily mission goal pool ----------
+   3 missions roll per day from this pool. Each slot picks from a difficulty tier
+   so a player always sees one easy + one medium + one hard goal. The 'tier'
+   keys are referenced by Daily.load when rolling. */
 export const GOALS: Goal[] = [
-  { id: 'height', t: 300, kind: 'runmax', text: (n) => `Reach ${n} m in one run`,    reward: 90 },
-  { id: 'perf',   t: 16,  kind: 'cum',    text: (n) => `Land ${n} perfect flings`,    reward: 90 },
-  { id: 'combo',  t: 10,  kind: 'runmax', text: (n) => `Chain an x${n} combo`,        reward: 100 },
-  { id: 'coins',  t: 180, kind: 'cum',    text: (n) => `Collect ${n} coins`,          reward: 80 },
-  { id: 'runs',   t: 6,   kind: 'cum',    text: (n) => `Finish ${n} runs`,            reward: 80 },
+  // easy (~30s effort)
+  { id: 'runs',     t: 3,   kind: 'cum',    text: (n) => `Play ${n} runs`,                  reward: 40,  tier: 'easy' },
+  { id: 'coinsE',   t: 60,  kind: 'cum',    text: (n) => `Collect ${n} coins`,               reward: 50,  tier: 'easy' },
+  { id: 'heightE',  t: 80,  kind: 'runmax', text: (n) => `Reach ${n} m in one run`,          reward: 50,  tier: 'easy' },
+  // medium (~2-3 min effort)
+  { id: 'perf',     t: 16,  kind: 'cum',    text: (n) => `Land ${n} perfect flings`,         reward: 90,  tier: 'med' },
+  { id: 'heightM',  t: 200, kind: 'runmax', text: (n) => `Reach ${n} m in one run`,          reward: 90,  tier: 'med' },
+  { id: 'combo',    t: 5,   kind: 'runmax', text: (n) => `Chain an x${n} combo`,             reward: 90,  tier: 'med' },
+  { id: 'coinsM',   t: 220, kind: 'cum',    text: (n) => `Collect ${n} coins`,               reward: 90,  tier: 'med' },
+  // hard (~5-8 min skilled effort)
+  { id: 'heightH',  t: 400, kind: 'runmax', text: (n) => `Reach ${n} m in one run`,          reward: 150, tier: 'hard' },
+  { id: 'comboH',   t: 8,   kind: 'runmax', text: (n) => `Chain an x${n} combo`,             reward: 150, tier: 'hard' },
+  { id: 'perfH',    t: 40,  kind: 'cum',    text: (n) => `Land ${n} perfect flings`,         reward: 150, tier: 'hard' },
+];
+
+/* ---------- combo milestone fireworks ----------
+   Each entry: { at, label, color, payout }. When the combo counter hits `at`
+   the run gets a screen flash + big burst + bonus coins + escalating sound. */
+export const COMBO_TIERS = [
+  { at: 3,  label: 'HOT!',     color: '#ffe39b', payout: 10 },
+  { at: 5,  label: 'ON FIRE!', color: '#ff9b50', payout: 30 },
+  { at: 8,  label: 'INSANE!',  color: '#ff4d8d', payout: 75 },
+  { at: 12, label: 'UNREAL!',  color: '#9be35a', payout: 200 },
 ];
 
 /* ---------- zones + milestones ---------- */

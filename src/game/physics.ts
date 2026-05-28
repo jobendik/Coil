@@ -2,7 +2,16 @@ import type { Node, SweetZone } from '../types';
 import { view } from '../core/canvas';
 import { state } from './state';
 import { TAU, clamp, lerp } from '../core/utils';
-import { GATE_MARGIN, G_FALL, LAUNCH, ORBIT, PERFECT_TOL0, WALL } from '../config';
+import {
+  EARLY_EASE_BOOST,
+  EARLY_EASE_END,
+  GATE_MARGIN,
+  G_FALL,
+  LAUNCH,
+  ORBIT,
+  PERFECT_TOL0,
+  WALL,
+} from '../config';
 
 /**
  * Mirror of the in-game flight: constant launch + gravity + wall bounce, returns the closest
@@ -130,6 +139,16 @@ export function computeSweetZone(): void {
     G.sweet = null;
     return;
   }
-  const want = PERFECT_TOL0 * lerp(1, 0.62, clamp(G.height / 700, 0, 1));
+  // Two-stage tolerance curve so new players land perfects easily, then the
+  // challenge scales up. Stage 1 (0..EARLY_EASE_END m): tolerance is up to
+  // EARLY_EASE_BOOST× base, decaying to 1× as height climbs. Stage 2 (above
+  // EARLY_EASE_END): existing tightening curve from 1× down to 0.62×.
+  let scale: number;
+  if (G.height < EARLY_EASE_END) {
+    scale = lerp(EARLY_EASE_BOOST, 1, G.height / EARLY_EASE_END);
+  } else {
+    scale = lerp(1, 0.62, clamp((G.height - EARLY_EASE_END) / 700, 0, 1));
+  }
+  const want = PERFECT_TOL0 * scale;
   G.sweet = gateBand(pl.node, T, pl.dir, want);
 }

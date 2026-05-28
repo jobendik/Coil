@@ -305,10 +305,55 @@ function drawVoid(): void {
 }
 
 const TUT_LINES = [
-  'TAP IN THE GLOWING GATE',
+  'TAP TO RELEASE',
   'FLY UP, ONE GATE AT A TIME',
   'HIT THE BRIGHT CENTER FOR PERFECT',
 ];
+
+/* Animated tutorial finger: a pulsing dot that hovers near the player while
+   attached, fading in only during the first tutorial stage. Reads as "tap
+   here" without obscuring the gate. */
+function drawTutorialHand(): void {
+  const { ctx } = view;
+  const G = state.G;
+  const pl = G.player;
+  if (G.tut !== 0 || !pl.latched) return;
+  const x = pl.wx + 22;
+  const y = sY(pl.wy) + 22;
+  const t = G.t;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = '#fff';
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#fff';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(0, 0, 12 + pulse * 6, 0, TAU);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, 5, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+/* Brief screen-tinted vignette when a combo milestone fires. Color flashes
+   in the tier's hue and fades over ~0.4s — gives every "ON FIRE!" the right
+   visceral pop without becoming noise on repeat hits. */
+function drawComboFlash(): void {
+  const G = state.G;
+  if (G.comboFlash <= 0) return;
+  const { ctx, W, H } = view;
+  const a = G.comboFlash;
+  ctx.save();
+  const grd = ctx.createRadialGradient(W / 2, H / 2, H * 0.15, W / 2, H / 2, H * 0.85);
+  grd.addColorStop(0, 'rgba(0,0,0,0)');
+  grd.addColorStop(1, G.comboFlashColor + (a > 0.7 ? '88' : a > 0.4 ? '55' : '22'));
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
 
 function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'aim', col: string): void {
   const { ctx } = view;
@@ -409,6 +454,8 @@ export function renderPlay(): void {
   drawGate();
   drawTrajectory();
   drawPlayer();
+  drawTutorialHand();
+  drawComboFlash();
 
   const closeness = clamp(1 - (G.player.wy - G.voidY) / 240, 0, 1);
   if (closeness > 0.05) {

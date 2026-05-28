@@ -5,10 +5,23 @@ export function xpForLevel(l: number): number {
   return Math.round(60 * Math.pow(l, 1.35));
 }
 
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function yesterdayKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
 export const Profile = {
   xp: Store.get<number>('coil_xp', 0),
   coins: Store.get<number>('coil_coins', 0),
   best: Store.get<number>('coil_best', 0),
+  streak: Store.get<number>('coil_streak', 0),
+  lastPlayDate: Store.get<string>('coil_last_play', ''),
 
   level(): number {
     let l = 1;
@@ -51,5 +64,32 @@ export const Profile = {
       return true;
     }
     return false;
+  },
+
+  /**
+   * Called when the player starts a run. Returns whether this is the FIRST run
+   * of the calendar day (which the run-loop uses to grant a 2× coin bonus).
+   * Also rolls the daily login streak forward or breaks it.
+   */
+  markRunStart(): boolean {
+    const today = todayKey();
+    if (this.lastPlayDate === today) return false;
+    if (this.lastPlayDate === yesterdayKey()) {
+      this.streak += 1;
+    } else {
+      this.streak = 1;
+    }
+    this.lastPlayDate = today;
+    Store.set('coil_streak', this.streak);
+    Store.set('coil_last_play', this.lastPlayDate);
+    return true;
+  },
+
+  /**
+   * Has the player already played today? Drives the home-screen badge so the
+   * "FIRST RUN BONUS" tease only shows when it would actually fire.
+   */
+  hasPlayedToday(): boolean {
+    return this.lastPlayDate === todayKey();
   },
 };
