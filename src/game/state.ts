@@ -2,6 +2,10 @@ import type { GameState, Node, Scene } from '../types';
 import { view } from '../core/canvas';
 import { settings } from '../settings';
 import { Profile } from './profile';
+import { setRunSeed } from './nodes';
+import { dailySeed } from './dailyrun';
+import { fxClear } from '../core/fx';
+import { FRENZY_TIME } from '../config';
 
 /* Singleton container for runtime-mutable state. Splitting into per-domain
    slots keeps modules from reaching into a 30-field "G" anonymously. */
@@ -10,8 +14,12 @@ export const state = {
   G: null as unknown as GameState,
 };
 
-export function resetRun(): void {
+export function resetRun(daily = false): void {
   const { W, H } = view;
+  // Daily Challenge: seed the route generator so every player gets the same
+  // layout today. Normal runs use live randomness.
+  setRunSeed(daily ? dailySeed() : null);
+  fxClear();
   const start: Node = { wx: W / 2, wy: -90, r: 18, type: 'normal', baseX: W / 2, next: null };
   // markRunStart returns true on the FIRST run of a new calendar day, and rolls
   // the login streak forward as a side effect.
@@ -52,6 +60,15 @@ export function resetRun(): void {
     comboFlashColor: '#fff',
     firstRunOfDay: firstOfDay,
     coinMult: firstOfDay ? 2 : 1,
+    daily,
+    overdrive: 0,
+    frenzyT: 0,
+    frenzyMax: FRENZY_TIME,
+    frenzyBanked: 0,
+    jackpotHit: false,
+    potWon: 0,
+    freezeT: 0,
+    bestNearShown: false,
     player: {
       wx: W / 2,
       wy: -30,

@@ -3,7 +3,9 @@ import { state } from '../game/state';
 import { skin, Owned } from '../game/skins';
 import { Profile } from '../game/profile';
 import { Daily } from '../game/daily';
-import { TAU, clamp, rr, text } from '../core/utils';
+import { DailyRun } from '../game/dailyrun';
+import { Vault } from '../game/vault';
+import { glowFX, TAU, clamp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { drawBG, drawTopToggles } from './play';
 import { MILESTONES, SKINS } from '../config';
@@ -11,6 +13,11 @@ import { MILESTONES, SKINS } from '../config';
 let onPlayRequested: () => void = () => { /* injected by main.ts */ };
 export function setPlayHandler(fn: () => void): void {
   onPlayRequested = fn;
+}
+
+let onDailyRequested: () => void = () => { /* injected by main.ts */ };
+export function setDailyHandler(fn: () => void): void {
+  onDailyRequested = fn;
 }
 
 function nextGoalLine(): string {
@@ -105,9 +112,28 @@ export function renderHome(dt: number): void {
   text('COIL', cx, cy - 118, 64, '#fff', 800, 26, 'center', "'Unbounded'");
   text('Tap in the glowing gate · climb the void', cx, cy - 76, 13, '#9fb0e0', 600, 0);
 
+  // STAR VAULT ticker — a slow long-term carrot (won by a bonus catch at high combo)
+  {
+    const vy = H * 0.43;
+    const pp = 0.6 + Math.sin(homeT * 3) * 0.4;
+    ctx.save();
+    ctx.fillStyle = '#ffd24a';
+    ctx.font = "800 10px 'Unbounded', sans-serif";
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#ffd24a';
+    ctx.shadowBlur = glowFX(10 + pp * 6);
+    ctx.fillText('✦ STAR VAULT ✦', cx, vy);
+    ctx.font = "800 18px 'Unbounded', sans-serif";
+    ctx.fillStyle = '#fff3b0';
+    ctx.shadowBlur = glowFX(16 + pp * 8);
+    ctx.fillText('★ ' + Math.round(Vault.v).toLocaleString(), cx, vy + 18);
+    ctx.restore();
+  }
+
   const lp = Profile.levelProgress();
-  text('BEST  ' + Profile.best + ' m', cx, H * 0.48, 22, sk.t, 700, 8);
-  text(Profile.title() + '  ·  Level ' + lp.l, cx, H * 0.48 + 22, 12, '#9fb0e0', 600, 0);
+  text('BEST  ' + Profile.best + ' m', cx, H * 0.485, 22, sk.t, 700, 8);
+  text(Profile.title() + '  ·  Level ' + lp.l, cx, H * 0.485 + 20, 12, '#9fb0e0', 600, 0);
 
   // Streak + first-run-of-day badges — the single biggest return-day driver.
   // We center one or two pills horizontally so neither falls into the mission
@@ -183,19 +209,41 @@ export function renderHome(dt: number): void {
   text('PLAY', W / 2, pyy + ph / 2, 22, '#04030a', 800, 0, 'center', "'Unbounded'");
   btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
 
+  // secondary row: DAILY CHALLENGE (left) | COLLECTION (right)
   const sw = W * 0.62;
   const sh = 46;
   const sxx = W / 2 - sw / 2;
   const syy = pyy + ph + 12;
-  rr(sxx, syy, sw, sh, 12);
+  const sgap = 12;
+  const half = (sw - sgap) / 2;
+  const lx = sxx;
+  const rx = sxx + half + sgap;
+  const dm = DailyRun.topMedal();
+  const fresh = !DailyRun.played();
+  rr(lx, syy, half, sh, 12);
+  ctx.fillStyle = 'rgba(20,16,48,.7)';
+  ctx.fill();
+  ctx.strokeStyle = fresh ? '#ffd24a' : (dm ? dm.c : 'rgba(255,255,255,.12)');
+  ctx.lineWidth = 1.5;
+  if (fresh) { ctx.shadowColor = '#ffd24a'; ctx.shadowBlur = glowFX(8 + Math.sin(homeT * 4) * 4); }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  text('DAILY ✦', lx + half / 2, syy + 15, 13, fresh ? '#ffd24a' : '#fff', 800, fresh ? 5 : 0);
+  text(DailyRun.played() ? 'Best ' + DailyRun.d.best + ' m' : 'New route today!',
+    lx + half / 2, syy + 31, 9.5, '#9fb0e0', 600, 0);
+  btn('daily', lx, syy, half, sh, () => onDailyRequested());
+
+  rr(rx, syy, half, sh, 12);
   ctx.fillStyle = 'rgba(20,16,48,.7)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.12)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text('◎ ' + Profile.coins + '   ·   COLLECTION', W / 2, syy + sh / 2, 15, sk.t, 700, 4);
-  btn('shop', sxx, syy, sw, sh, () => {
+  text('COLLECTION', rx + half / 2, syy + 15, 12, sk.t, 700, 0);
+  text('◎ ' + Profile.coins, rx + half / 2, syy + 31, 10, '#ffe39b', 700, 0);
+  btn('shop', rx, syy, half, sh, () => {
     state.scene = 'shop';
   });
+
   drawTopToggles();
 }
