@@ -178,6 +178,58 @@ function drawNode(n: import('../types').Node): void {
   }
 }
 
+/* small N-point star glyph at the current origin */
+function star(pts: number, rOuter: number, rInner: number): void {
+  const { ctx } = view;
+  ctx.beginPath();
+  for (let i = 0; i < pts * 2; i++) {
+    const a = (i / (pts * 2)) * TAU - Math.PI / 2;
+    const r = i % 2 ? rInner : rOuter;
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  ctx.closePath();
+}
+
+/* CONSTELLATION CHAINS — dotted links + star markers over the 3 marked gates,
+   brightening as the chain is completed in order. The signature in-run objective. */
+function drawConstellations(): void {
+  const { ctx, H } = view;
+  const G = state.G;
+  for (const n of G.nodes) {
+    if (n.constel == null) continue;
+    const y = sY(n.wy);
+    if (y < -40 || y > H + 40) continue;
+    const active = G.constelActive === n.constel;
+    const captured = active && (n.cidx ?? 0) < G.constelProg;
+    const col = captured ? '#ffffff' : active ? '#e6d8ff' : '#a76bff';
+    const nx = n.next;
+    if (nx && nx.constel === n.constel) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([4, 5]);
+      ctx.shadowColor = col;
+      ctx.shadowBlur = glowFX(6);
+      ctx.beginPath();
+      ctx.moveTo(n.wx, y);
+      ctx.lineTo(nx.wx, sY(nx.wy));
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.translate(n.wx, y - n.r - 11);
+    ctx.globalAlpha = captured ? 1 : 0.9;
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = glowFX(captured ? 12 : 7);
+    const s = 4.6 + (active ? Math.sin(G.t * 6 + (n.cidx ?? 0)) * 0.8 : 0);
+    star(5, s, s * 0.45);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 /* the glowing gate: safe band (dim) + perfect band (bright), drawn on the orbit */
 function drawGate(): void {
   const { ctx } = view;
@@ -792,6 +844,7 @@ export function renderPlay(): void {
   drawGoalMarkers();
   drawFrenzyBloom();
   for (const n of G.nodes) drawNode(n);
+  drawConstellations();
   for (const s of G.sparks) {
     if (s.got) continue;
     const y = sY(s.wy);
@@ -889,6 +942,10 @@ export function renderPlay(): void {
   // HUD
   text(G.height + ' m', W / 2, 40 + SAFE_TOP, 30, '#fff', 800, 16, 'center', "'Unbounded'");
   if (G.combo > 1) text('PERFECT x' + G.combo, W / 2, 72 + SAFE_TOP, 15, '#ffb020', 700, 8);
+  if (G.constelProg > 0) {
+    const dots = '✦'.repeat(G.constelProg) + '◦'.repeat(3 - G.constelProg);
+    text('CONSTELLATION  ' + dots, W / 2, 88 + SAFE_TOP, 11, '#cdb4ff', 800, 6);
+  }
   text('◎ ' + (Profile.coins + G.coins), W - 16, 28 + SAFE_TOP, 14, '#ffe39b', 700, 6, 'right');
   drawMeters();
 

@@ -72,6 +72,7 @@ export const WORLDS: World[] = [
   { id: 'sakura',  name: 'Sakura Stars', price: 1300, bg: ['#4c1b38', '#21142d', '#08040f'], alt: ['#693056', '#2c183d', '#120819'], void: '#ff8bc2', node: '#ffd0e4', tag: 'Dream' },
   { id: 'gold',    name: 'Golden Arcade',price: 1800, bg: ['#3b2608', '#171008', '#050302'], alt: ['#5e390a', '#281604', '#090402'], void: '#ffb020', node: '#ffd24a', tag: 'Jackpot' },
   { id: 'aurora',  name: 'Aurora Void',  price: 2400, bg: ['#092c35', '#071d2b', '#02050b'], alt: ['#123c57', '#102048', '#030714'], void: '#2ff3e0', node: '#9be35a', tag: 'Premium', req: { kind: 'streak', value: 7 } },
+  { id: 'starlace', name: 'Star Lace',   price: 3000, bg: ['#1a1140', '#100a2e', '#040316'], alt: ['#2a1a63', '#160d3d', '#070421'], void: '#cdb4ff', node: '#e6d8ff', tag: 'Constellation', req: { kind: 'constel', value: 10 } },
 ];
 
 /* ---------- daily mission goal pool ----------

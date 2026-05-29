@@ -13,6 +13,8 @@ export interface Node {
   ph?: number;
   spd?: number;
   pulse?: number;
+  constel?: number;   // constellation group id (marks this node as part of a chain)
+  cidx?: number;      // 0..2 — position within its constellation
 }
 
 export type SparkKind = 'spark' | 'shield' | 'focus' | 'magnet';
@@ -115,13 +117,20 @@ export interface GameState {
   potWon: number;                 // ★ amount won from the vault this run (for the result screen)
   freezeT: number;                // brief anticipation hold after a huge event
   bestNearShown: boolean;         // honest "so close to your best" toast (once per run)
+  // ---- constellation chains (signature in-run skill objective) ----
+  constelActive: number;          // group id of the chain currently in progress (-1 = none)
+  constelProg: number;            // perfects landed in the active chain so far (0..3)
+  constellations: number;         // chains completed THIS run
+  lastReleasePerfect: boolean;    // was the most recent fling a perfect? (drives chain progress)
+  _constelPending?: number;       // gen: remaining nodes to mark in the chain being laid
+  _constelGroup?: number;         // gen: running constellation group id
 }
 
 /** An alternate, skill-based unlock route for a cosmetic. When present and met,
  *  the item is earned for free (auto-claimed) instead of bought with coins —
  *  giving the catalogue varied routes (height / combo / streak / achievement)
  *  rather than a pure coin vending machine. Items without a `req` stay coin-buyable. */
-export type UnlockKind = 'height' | 'combo' | 'streak' | 'ach';
+export type UnlockKind = 'height' | 'combo' | 'streak' | 'ach' | 'constel';
 export interface UnlockReq {
   kind: UnlockKind;
   value: number | string;   // height m / combo x / streak days / achievement id
@@ -178,6 +187,7 @@ export interface AchSummary {
   streak: number;
   potWon: boolean;
   daily: boolean;
+  constellations: number;   // lifetime constellations completed (for unlock achievements)
 }
 
 export interface DailyMedal {
@@ -258,6 +268,7 @@ export interface ResultData {
   achievements: Achievement[];  // achievements newly unlocked this run
   daily: boolean;          // was this the Daily Challenge route
   zen: boolean;            // was this a Zen (no-fail) session
+  constellations: number;  // constellation chains completed this run
   dailyMedals: DailyMedal[];    // medals freshly earned on this daily run
   claimedUnlocks: string[];     // names of cosmetics earned for free this run (skill-gated)
 }

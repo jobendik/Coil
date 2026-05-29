@@ -21,6 +21,7 @@ export const Profile = {
   coins: Store.get<number>('coil_coins', 0),
   best: Store.get<number>('coil_best', 0),
   bestCombo: Store.get<number>('coil_best_combo', 0),
+  constellations: Store.get<number>('coil_constel', 0),
   streak: Store.get<number>('coil_streak', 0),
   lastPlayDate: Store.get<string>('coil_last_play', ''),
 
@@ -73,6 +74,13 @@ export const Profile = {
       this.bestCombo = c;
       Store.set('coil_best_combo', c);
     }
+  },
+
+  /** Lifetime constellation-chain completions (drives a cosmetic unlock + achievement). */
+  addConstellations(n: number): void {
+    if (n <= 0) return;
+    this.constellations += n;
+    Store.set('coil_constel', this.constellations);
   },
 
   /**

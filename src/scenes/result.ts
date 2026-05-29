@@ -238,6 +238,7 @@ export const Result = {
     if (d.claimedUnlocks.length) return ['✦ UNLOCKED · ' + d.claimedUnlocks.join(' + '), '#9be35a'];
     if (d.potWon > 0) return ['★ +' + d.potWon + ' STAR VAULT', '#ffd24a'];
     if (d.dailyMedals.length) return [d.dailyMedals.map((m) => m.name).join(' + ') + ' MEDAL', '#ffd24a'];
+    if (d.constellations > 0) return ['✦ ' + d.constellations + ' CONSTELLATION' + (d.constellations > 1 ? 'S' : ''), '#cdb4ff'];
     if (d.achievements.length) {
       const extra = d.achievements.length > 1 ? '  +' + (d.achievements.length - 1) : '';
       return ['★ ' + d.achievements[0].t + extra, '#ffd24a'];

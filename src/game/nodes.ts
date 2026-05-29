@@ -123,6 +123,20 @@ export function genNode(): void {
   G.nodes.push(node);
   G.lastNodeY = ny;
 
+  // CONSTELLATION CHAINS — mark 3 consecutive path nodes as a set. Perfect all
+  // three in a row mid-run to complete it (handled in update.ts). Purely a
+  // marker + meta hook; the gate physics/honesty are untouched.
+  if ((G._constelPending ?? 0) > 0) {
+    node.constel = G._constelGroup;
+    node.cidx = 3 - (G._constelPending as number);
+    G._constelPending = (G._constelPending as number) - 1;
+  } else if (!easy && hm > 90 && type === 'normal' && rnd() < 0.045) {
+    G._constelGroup = (G._constelGroup ?? 0) + 1;
+    node.constel = G._constelGroup;
+    node.cidx = 0;
+    G._constelPending = 2;   // the next two path nodes complete the trio
+  }
+
   // Spikes — instant-death hazards (shield still saves). Placed laterally off the
   // node line so the gate's flight path stays clear. NOT linked into prev.next, so
   // the gate (which targets n.next) never aims at a spike. Gated to hm > 320.

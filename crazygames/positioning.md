@@ -61,9 +61,12 @@ Concept similarity is a *marketing* problem, not a gameplay one. Two rules:
    Star Vault tease, and an explicit "Reach 500 m to unlock Void" carrot —
    progression a survival clone doesn't have.
 
-## Optional signature differentiator (recommended, not yet built)
-A mechanic Sticky Orbit can't trivially copy and that deepens our identity:
+## Signature differentiator (SHIPPED)
 **Constellation chains** — three marked gates appear in sequence; perfect all three
-to complete an in-run mini-objective that drops a fragment toward a collection
-unlock. It compounds our two advantages (fairness + collection) into one hook.
-Say the word and I'll implement it behind the honest-gate system + the gate test.
+in a row to complete an in-run mini-objective. Completing one pays coins + a
+celebration and counts toward lifetime progress that unlocks the **Star Lace**
+world (10 constellations) and two achievements (STARWEAVER / CONSTELLER). It
+compounds our two advantages — provable fairness + collection depth — into a
+single hook a pure survival game can't trivially copy. Built ON the honest-gate
+system, so the gate-honesty test still passes (0 dishonest gates). In-world it
+shows star-marked nodes linked by a dotted constellation line + a HUD tracker.
