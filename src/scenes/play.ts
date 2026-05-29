@@ -5,9 +5,9 @@ import { trail, world } from '../game/collection';
 import { Profile } from '../game/profile';
 import { Pop } from '../core/particles';
 import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
-import { TAU, angDiff, clamp, glowFX, hexA, lerp, rand, text } from '../core/utils';
+import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, rand, text } from '../core/utils';
 import { btn } from '../core/ui';
-import { settings, setAimPreview, setMuted, setMusicMuted } from '../settings';
+import { settings, setAimPreview, setMuted, setMusicMuted, setReducedMotion } from '../settings';
 import { rr } from '../core/utils';
 import { CATCH_PAD, DAILY_MEDALS, G_FALL, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
 
@@ -29,15 +29,15 @@ const STARS = (() => {
 export function drawBG(): void {
   const { ctx, W, H } = view;
   const h = state.G?.height ?? 0;
-  let z0 = ZONES[0];
-  let z1 = ZONES[0];
+  // Depth-blend progress within the current zone band (0→1), used to lerp the
+  // equipped world's bg → alt palette. Zones carry no colours of their own.
   let tt = 0;
   for (let i = 0; i < ZONES.length; i++) {
     if (h >= ZONES[i].from) {
-      z0 = ZONES[i];
-      z1 = ZONES[Math.min(i + 1, ZONES.length - 1)];
-      const span = (z1.from - z0.from) || 1;
-      tt = clamp((h - z0.from) / span, 0, 1);
+      const from = ZONES[i].from;
+      const to = ZONES[Math.min(i + 1, ZONES.length - 1)].from;
+      const span = (to - from) || 1;
+      tt = clamp((h - from) / span, 0, 1);
     }
   }
   const mix = (a: string, b: string): string => {
@@ -48,8 +48,8 @@ export function drawBG(): void {
     const bl = Math.round(lerp(pa & 255, pb & 255, tt));
     return `rgb(${r},${g},${bl})`;
   };
-  // The equipped WORLD owns the palette (bg → alt blended by zone progress tt);
-  // zones still drive the depth feel via tt. Default world == the classic Neon.
+  // The equipped WORLD owns the palette (bg → alt blended by zone progress tt).
+  // Default world == the classic Neon.
   const wld = world();
   const bg0 = wld.bg;
   const bg1 = wld.alt;
@@ -409,9 +409,9 @@ function drawTutorialHand(): void {
    visceral pop without becoming noise on repeat hits. */
 function drawComboFlash(): void {
   const G = state.G;
-  if (G.comboFlash <= 0) return;
+  if (G.comboFlash <= 0 || fx.motion <= 0) return;
   const { ctx, W, H } = view;
-  const a = G.comboFlash;
+  const a = G.comboFlash * fx.motion;
   ctx.save();
   const grd = ctx.createRadialGradient(W / 2, H / 2, H * 0.15, W / 2, H / 2, H * 0.85);
   grd.addColorStop(0, 'rgba(0,0,0,0)');
@@ -421,7 +421,7 @@ function drawComboFlash(): void {
   ctx.restore();
 }
 
-function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim', col: string): void {
+function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff', col: string): void {
   const { ctx } = view;
   ctx.save();
   rr(x, y, s, s, 10);
@@ -482,6 +482,17 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
     ctx.moveTo(cx - 9, cy); ctx.lineTo(cx - 3, cy);
     ctx.moveTo(cx + 3, cy); ctx.lineTo(cx + 9, cy);
     ctx.stroke();
+  } else if (icon === 'motion' || icon === 'motionOff') {
+    // concentric "ripple" rings = motion; slash = reduced
+    ctx.beginPath(); ctx.arc(cx, cy, 3, 0, TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 7, -0.9, 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 7, Math.PI - 0.9, Math.PI + 0.9); ctx.stroke();
+    if (icon === 'motionOff') {
+      ctx.beginPath();
+      ctx.moveTo(cx - 9, cy + 9);
+      ctx.lineTo(cx + 9, cy - 9);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -502,6 +513,11 @@ export function drawTopToggles(): void {
   const x2 = pad + 2 * (s + 8);
   btn('aim', x2, top, s, s, () => setAimPreview(!settings.aimPreview));
   drawIconBtn(x2, top, s, 'aim', settings.aimPreview ? '#2ff3e0' : '#5b6488');
+  // Reduced Motion toggle — comfort + accessibility (softens shake/flash/vignette)
+  const x3 = pad + 3 * (s + 8);
+  btn('motion', x3, top, s, s, () => setReducedMotion(!settings.reducedMotion));
+  drawIconBtn(x3, top, s, settings.reducedMotion ? 'motionOff' : 'motion',
+    settings.reducedMotion ? '#5b6488' : '#a76bff');
 }
 
 /* In-world "ghost goal" markers — a line you climb toward. Normal mode shows

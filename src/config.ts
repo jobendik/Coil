@@ -19,6 +19,15 @@ export const EARLY_EASE_END = 50;        // height (m) at which the boost decays
 export const NEAR_MISS_RADIUS = 90;      // world-px radius for the one-per-run save rescue
 export const DEATH_ANIM = 0.30;          // shortened death animation for snappier restart loop
 
+/* ---------- near-perfect combo protection (anti-rage-quit) ----------
+   Once per run, a fling that JUST misses the perfect window while the player
+   is on a worthwhile chain is forgiven: the combo is preserved (not broken)
+   and the player sees a "NEAR PERFECT" pop. Reduces the "I barely missed and
+   lost my whole combo" frustration the ideas doc calls out, without making
+   perfects free — it's one save, only on a genuine near-miss, only at x5+. */
+export const NEAR_PERFECT_BAND = 1.7;    // miss within tol×this counts as "near"
+export const NEAR_PERFECT_MIN_COMBO = 5; // only protect chains worth keeping
+
 export const DEBUG = false;
 
 /* ---------- profile titles ---------- */
@@ -87,11 +96,14 @@ export const COMBO_TIERS = [
   { at: 12, label: 'UNREAL!',  color: '#9be35a', payout: 200 },
 ];
 
-/* ---------- zones + milestones ---------- */
+/* ---------- zones + milestones ----------
+   Zones are depth *bands*: they drive the zone-name toast and the background's
+   depth-blend progress (tt). The actual palette is owned by the equipped WORLD
+   (see collection.ts / drawBG), so zones intentionally carry no colours. */
 export const ZONES: Zone[] = [
-  { name: 'NEON ORBIT',  from: 0,   bg: ['#160e33', '#0a0720', '#04030a'] },
-  { name: 'GLITCH STORM', from: 250, bg: ['#2a0f33', '#160a26', '#06030f'] },
-  { name: 'DEEP VOID',   from: 600, bg: ['#0a1430', '#05081c', '#020208'] },
+  { name: 'NEON ORBIT',   from: 0 },
+  { name: 'GLITCH STORM', from: 250 },
+  { name: 'DEEP VOID',    from: 600 },
 ];
 
 export const MILESTONES = [100, 250, 500, 1000, 2000, 4000];

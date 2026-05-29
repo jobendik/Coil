@@ -96,6 +96,7 @@ export interface GameState {
   banked: BankedHwm;
   firstFlingPending: boolean;     // guarantees the first fling of a run lands as PERFECT
   savesUsedThisRun: number;       // near-miss snap-rescue counter (1 allowed)
+  nearPerfectUsed: boolean;       // near-perfect combo protection spent (1 per run)
   comboTierReached: number;       // highest COMBO_TIERS index already celebrated
   comboFlash: number;             // 0..1 brief screen-tint pulse on milestones
   comboFlashColor: string;        // color of the active milestone flash
@@ -174,7 +175,6 @@ export interface DailyMedal {
 export interface Zone {
   name: string;
   from: number;
-  bg: [string, string, string];
 }
 
 export type GoalKind = 'cum' | 'runmax';

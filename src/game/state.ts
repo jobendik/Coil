@@ -55,6 +55,7 @@ export function resetRun(daily = false): void {
     banked: { h: 0, perf: 0, mc: 0 },
     firstFlingPending: true,
     savesUsedThisRun: 0,
+    nearPerfectUsed: false,
     comboTierReached: -1,
     comboFlash: 0,
     comboFlashColor: '#fff',

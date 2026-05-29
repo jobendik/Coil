@@ -7,6 +7,7 @@ import { DailyRun } from '../game/dailyrun';
 import { Vault } from '../game/vault';
 import { glowFX, TAU, clamp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
+import { Telemetry } from '../core/telemetry';
 import { drawBG, drawTopToggles } from './play';
 import { MILESTONES, SKINS } from '../config';
 
@@ -242,6 +243,7 @@ export function renderHome(dt: number): void {
   text('COLLECTION', rx + half / 2, syy + 15, 12, sk.t, 700, 0);
   text('◎ ' + Profile.coins, rx + half / 2, syy + 31, 10, '#ffe39b', 700, 0);
   btn('shop', rx, syy, half, sh, () => {
+    Telemetry.shopOpen();
     state.scene = 'shop';
   });
 

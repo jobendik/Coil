@@ -11,6 +11,7 @@ import { Confetti, Rays, Shock, Sparkles } from '../core/fx';
 import { TAU, clamp, glowFX, hexA, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { SFX } from '../core/audio';
+import { Telemetry } from '../core/telemetry';
 import { drawBG, dimVoid } from './play';
 import { SKINS, TRAILS, WORLDS } from '../config';
 import type { Skin, Trail, World } from '../types';
@@ -61,6 +62,7 @@ function buy(tab: Tab, item: Skin | Trail | World): void {
   if (tab === 'trails') { ownTrail(item.id); equipTrail(item.id); }
   else if (tab === 'worlds') { ownWorld(item.id); equipWorld(item.id); }
   else { ownSkin(item.id); equipSkin(item.id); }
+  Telemetry.unlock(item.id);
   SFX.unlock();
   // Unlock moment is a clean "reveal", not a coin party — the player just SPENT
   // coins, so a fountain of them reads wrong. A rarity-tinted shock + a few rays

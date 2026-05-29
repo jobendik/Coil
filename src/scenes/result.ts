@@ -11,6 +11,7 @@ import { Coins, Confetti, FlyCoins, bankXY } from '../core/fx';
 import { buzz } from '../core/haptics';
 import { clamp, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
+import { Telemetry } from '../core/telemetry';
 import { dimVoid } from './play';
 import { MILESTONES, SKINS } from '../config';
 
@@ -312,6 +313,7 @@ export const Result = {
     ctx.stroke();
     text('COLLECTION', px + half / 2, py + 23, 13, sk.t, 700, 0);
     btn('rshop', px, py, half, 46, () => {
+      Telemetry.shopOpen();
       state.scene = 'shop';
     });
     rr(px + half + 12, py, half, 46, 12);
