@@ -252,16 +252,44 @@ export function update(dt: number): void {
       return;
     }
   } else if (!pl.latched && sY(pl.wy) > H + 40) {
-    // ZEN: there is no death. Drop off the bottom of the screen and you're flung
-    // back up into play — high enough to clearly re-reach and re-attach to a gate.
-    pl.vy = BOUNCE_VY;
-    pl.vx *= 0.4;
+    // ZEN: there is no death. Drop off the bottom and you glide back ONTO the
+    // nearest gate above — a deterministic re-entry, not a ballistic bounce. A
+    // perfectly vertical fall used to bounce up/down forever (vx stayed 0); this
+    // can't loop because the player ends up latched and orbiting again.
+    let best: Node | null = null;
+    let bd = Infinity;
+    for (const n of G.nodes) {
+      if (n.type === 'spike') continue;
+      if (n.wy <= pl.wy) continue;          // must be above the player
+      const d = n.wy - pl.wy;
+      if (d < bd) { bd = d; best = n; }
+    }
     G.doomed = false;
     G.invuln = 0.5;
-    SFX.shield();
-    P.ring(pl.wx, sY(pl.wy), skin().t, 16, 240);
-    Shock.ring(pl.wx, H - 8, skin().t, { r0: 10, r1: 80, lw: 3, life: 0.4 });
-    G.toast = { txt: 'BOUNCE', t: 0.7, c: skin().t };
+    if (best) {
+      pl.latched = true;
+      pl.node = best;
+      pl.dir = 1;
+      pl.ang = -Math.PI / 2;
+      pl.vx = 0;
+      pl.vy = 0;
+      pl.trail.length = 0;
+      pl.lastReleased = null;
+      pl.wx = best.wx + Math.cos(pl.ang) * ORBIT;
+      pl.wy = best.wy + Math.sin(pl.ang) * ORBIT;
+      G.target = best.next;
+      computeSweetZone();
+      SFX.shield();
+      P.ring(pl.wx, sY(pl.wy), skin().t, 18, 260);
+      Shock.ring(pl.wx, sY(pl.wy), skin().t, { r0: 10, r1: 70, lw: 3, life: 0.4 });
+      G.toast = { txt: 'FLOW', t: 0.7, c: skin().t };
+    } else {
+      // Fallback (no gate above yet): a bounce with a guaranteed centre-ward
+      // nudge so it can never be perfectly vertical.
+      pl.vy = BOUNCE_VY;
+      pl.vx = pl.vx * 0.4 + (W / 2 - pl.wx) * 0.9;
+      G.toast = { txt: 'FLOW', t: 0.7, c: skin().t };
+    }
   }
 
   // collectibles (MAGNET pulls coins toward the player; FOCUS/MAGNET are timed power-ups)
