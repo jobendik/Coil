@@ -202,8 +202,25 @@ export function update(dt: number): void {
   let z = 0;
   for (let i = 0; i < ZONES.length; i++) if (G.height >= ZONES[i].from) z = i;
   if (z !== G.zone) {
+    const advancing = z > G.zone;
     G.zone = z;
-    G.toast = { txt: ZONES[z].name, t: 1.6, c: skin().t };
+    if (advancing) {
+      // Entering a new zone is a milestone — give it a real "chapter" beat so the
+      // endless climb feels like progress through distinct places.
+      const { W, H } = view;
+      const c = skin().t;
+      Callout.add('ENTERING ' + ZONES[z].name, c, true);
+      SFX.riser(0.4);
+      cymbal(0.35);
+      Flash.hit(c, 0.16);
+      Shock.ring(W / 2, H * 0.4, c, { r0: 20, r1: Math.max(W, H) * 0.95, lw: 6, life: 0.6 });
+      Sparkles.scatter(18, c);
+      shake(4, 0.2);
+      buzz([20, 30]);
+      CG.happy();
+    } else {
+      G.toast = { txt: ZONES[z].name, t: 1.6, c: skin().t };
+    }
   }
 
   if (!G.zen) {
