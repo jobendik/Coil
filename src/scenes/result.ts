@@ -5,6 +5,8 @@ import { Profile } from '../game/profile';
 import { Daily } from '../game/daily';
 import { DailyRun } from '../game/dailyrun';
 import { Owned, skin } from '../game/skins';
+import { OwnedTrails, OwnedWorlds } from '../game/collection';
+import { reqMet } from '../game/unlocks';
 import { CG } from '../core/cg';
 import { SFX, cheerSwell, cymbal } from '../core/audio';
 import { Coins, Confetti, FlyCoins, bankXY } from '../core/fx';
@@ -13,7 +15,7 @@ import { clamp, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
 import { dimVoid } from './play';
-import { MILESTONES, SKINS } from '../config';
+import { MILESTONES, SKINS, TRAILS, WORLDS } from '../config';
 
 interface ResultBar {
   label: string;
@@ -70,8 +72,8 @@ export const Result = {
         val: this.dailyValLabel(),
       },
       {
-        label: this.nextSkinLabel(),
-        to: this.nextSkinPct(),
+        label: this.nextUnlockLabel(),
+        to: this.nextUnlockPct(),
         color: '#ff4d8d',
         val: '◎ +' + d.coins,
       },
@@ -82,6 +84,8 @@ export const Result = {
     if (d.newBest) Confetti.rain(40);
     if (d.dailyMedals.length) { Confetti.rain(50); setTimeout(() => { SFX.jackpot(); }, 400); }
     if (d.achievements.length) setTimeout(() => { SFX.unlock(); cymbal(0.3); buzz([30, 50, 30]); }, 600);
+    // Earning a skill-gated cosmetic is a peak moment — give it its own fanfare.
+    if (d.claimedUnlocks.length) { Confetti.rain(60); setTimeout(() => { SFX.unlock(); cymbal(0.45); buzz([20, 40, 20, 40]); }, 500); }
   },
 
   /** rewarded DOUBLE COINS — pure upside, opt-in, once per result. */
@@ -113,16 +117,64 @@ export const Result = {
     return `${done}/${ms.length}`;
   },
 
-  nextSkin() {
-    return SKINS.find((s) => !Owned.includes(s.id));
+  /** The cheapest unowned, COIN-buyable cosmetic across all three categories.
+   *  Skill-gated items (with a `req`) are earned, not saved-for, so they're
+   *  excluded here — they surface via the claimed-unlock celebration instead. */
+  nextUnlock(): { name: string; kind: string; price: number } | null {
+    const pool: Array<{ name: string; kind: string; price: number; owned: boolean; req: boolean }> = [
+      ...SKINS.map((s) => ({ name: s.name, kind: 'CHARACTER', price: s.price, owned: Owned.includes(s.id), req: !!s.req })),
+      ...TRAILS.map((t) => ({ name: t.name, kind: 'TRAIL', price: t.price, owned: OwnedTrails.includes(t.id), req: !!t.req })),
+      ...WORLDS.map((w) => ({ name: w.name, kind: 'WORLD', price: w.price, owned: OwnedWorlds.includes(w.id), req: !!w.req })),
+    ];
+    let best: { name: string; kind: string; price: number } | null = null;
+    for (const it of pool) {
+      if (it.owned || it.req || it.price <= 0) continue;
+      if (!best || it.price < best.price) best = { name: it.name, kind: it.kind, price: it.price };
+    }
+    return best;
   },
-  nextSkinLabel(): string {
-    const s = this.nextSkin();
-    return s ? 'NEXT SKIN: ' + s.name : 'ALL SKINS UNLOCKED';
+  nextUnlockLabel(): string {
+    const u = this.nextUnlock();
+    return u ? 'NEXT ' + u.kind + ': ' + u.name : 'COLLECTION COMPLETE';
   },
-  nextSkinPct(): number {
-    const s = this.nextSkin();
-    return s ? clamp(Profile.coins / s.price, 0, 1) : 1;
+  nextUnlockPct(): number {
+    const u = this.nextUnlock();
+    return u ? clamp(Profile.coins / u.price, 0, 1) : 1;
+  },
+
+  /** Closest-to-earned, still-locked skill-gated cosmetic, as a one-line carrot.
+   *  Returns null if none remain or none are close enough to be motivating. */
+  nearestSkillUnlock(): string | null {
+    const items: Array<{ name: string; req: import('../types').UnlockReq; owned: boolean }> = [
+      ...SKINS.filter((s) => s.req).map((s) => ({ name: s.name, req: s.req!, owned: Owned.includes(s.id) })),
+      ...TRAILS.filter((t) => t.req).map((t) => ({ name: t.name, req: t.req!, owned: OwnedTrails.includes(t.id) })),
+      ...WORLDS.filter((w) => w.req).map((w) => ({ name: w.name, req: w.req!, owned: OwnedWorlds.includes(w.id) })),
+    ];
+    let bestFrac = -1;
+    let bestTxt: string | null = null;
+    for (const it of items) {
+      if (it.owned || reqMet(it.req)) continue;
+      const r = it.req;
+      let frac = 0;
+      let phrase = '';
+      if (r.kind === 'height') {
+        frac = clamp(Profile.best / (r.value as number), 0, 1);
+        phrase = `Reach ${r.value} m to unlock ${it.name}`;
+      } else if (r.kind === 'combo') {
+        frac = clamp(Profile.bestCombo / (r.value as number), 0, 1);
+        phrase = `Chain an x${r.value} combo to unlock ${it.name}`;
+      } else if (r.kind === 'streak') {
+        frac = clamp(Profile.streak / (r.value as number), 0, 1);
+        phrase = `Keep a ${r.value}-day streak to unlock ${it.name}`;
+      } else {
+        frac = 0.3;
+        phrase = `Earn an achievement to unlock ${it.name}`;
+      }
+      if (frac > bestFrac) { bestFrac = frac; bestTxt = phrase; }
+    }
+    // Only surface it when the player is at least a third of the way — otherwise
+    // it's a distant goal, not a "one more run" hook.
+    return bestFrac >= 0.34 ? bestTxt : null;
   },
 
   header(): [string, string] {
@@ -165,11 +217,15 @@ export const Result = {
     }
     const nm = MILESTONES.find((m) => m > d.h);
     if (nm && d.h >= nm * 0.7) return `Just ${nm - d.h} m to the ${nm} m milestone`;
-    const ns = this.nextSkin();
-    if (ns) {
-      const left = Math.max(0, ns.price - Profile.coins);
-      if (left > 0) return `Save ${left} ◎ to unlock ${ns.name}`;
-      return `You can afford ${ns.name} — check the collection`;
+    // Closest skill-gated cosmetic still locked — a "one more run" carrot that
+    // isn't about coins (e.g. "Reach 500 m to unlock Void").
+    const sg = this.nearestSkillUnlock();
+    if (sg) return sg;
+    const u = this.nextUnlock();
+    if (u) {
+      const left = Math.max(0, u.price - Profile.coins);
+      if (left > 0) return `Save ${left} ◎ to unlock ${u.name}`;
+      return `You can afford ${u.name} — check the collection`;
     }
     return `Beat your best: ${Profile.best} m`;
   },
@@ -177,6 +233,8 @@ export const Result = {
   /** The single most exciting one-liner to surface under the stat row. */
   highlightLine(): [string, string] | null {
     const d = this.d;
+    // A freshly-earned cosmetic outranks most things — it's the rarest payoff.
+    if (d.claimedUnlocks.length) return ['✦ UNLOCKED · ' + d.claimedUnlocks.join(' + '), '#9be35a'];
     if (d.potWon > 0) return ['★ +' + d.potWon + ' STAR VAULT', '#ffd24a'];
     if (d.dailyMedals.length) return [d.dailyMedals.map((m) => m.name).join(' + ') + ' MEDAL', '#ffd24a'];
     if (d.achievements.length) {

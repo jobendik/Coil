@@ -20,6 +20,7 @@ export const Profile = {
   xp: Store.get<number>('coil_xp', 0),
   coins: Store.get<number>('coil_coins', 0),
   best: Store.get<number>('coil_best', 0),
+  bestCombo: Store.get<number>('coil_best_combo', 0),
   streak: Store.get<number>('coil_streak', 0),
   lastPlayDate: Store.get<string>('coil_last_play', ''),
 
@@ -64,6 +65,14 @@ export const Profile = {
       return true;
     }
     return false;
+  },
+
+  /** Persist the all-time best combo (drives combo-based cosmetic unlocks). */
+  setBestCombo(c: number): void {
+    if (c > this.bestCombo) {
+      this.bestCombo = c;
+      Store.set('coil_best_combo', c);
+    }
   },
 
   /**

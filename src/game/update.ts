@@ -14,6 +14,7 @@ import { Daily } from './daily';
 import { Scores } from './scores';
 import { Vault } from './vault';
 import { Achievements } from './achievements';
+import { claimEarnedUnlocks } from './unlocks';
 import { DailyRun } from './dailyrun';
 import { CG } from '../core/cg';
 import { Telemetry } from '../core/telemetry';
@@ -536,6 +537,7 @@ export function bankRun(): ResultData {
   Profile.addXP(xpGain);
   Profile.addCoins(coins);
   const newBest = Profile.setBest(h);
+  Profile.setBestCombo(mc);
   const leveledUp = Profile.level() > prevLvl;
 
   let missionRewards = 0;
@@ -573,8 +575,17 @@ export function bankRun(): ResultData {
   };
   const achievements = Achievements.check(summary);
 
+  // Skill-gated cosmetics: anything whose requirement is now met is earned for
+  // free (must run AFTER setBest/setBestCombo + achievement checks above).
+  const claimed = claimEarnedUnlocks();
+  const claimedUnlocks = [
+    ...claimed.skins.map((s) => s.name),
+    ...claimed.trails.map((t) => t.name),
+    ...claimed.worlds.map((w) => w.name),
+  ];
+
   if (newBest) CG.happy();
-  if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length) SFX.unlock();
+  if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length || claimedUnlocks.length) SFX.unlock();
 
   return {
     h, mc, perf, coins, newBest, xpGain, leveledUp,
@@ -583,6 +594,7 @@ export function bankRun(): ResultData {
     achievements,
     daily: G.daily,
     dailyMedals,
+    claimedUnlocks,
   };
 }
 

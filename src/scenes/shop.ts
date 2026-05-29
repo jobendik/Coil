@@ -12,6 +12,7 @@ import { TAU, clamp, glowFX, hexA, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { SFX } from '../core/audio';
 import { Telemetry } from '../core/telemetry';
+import { reqFraction, reqLabel, reqProgress } from '../game/unlocks';
 import { drawBG, dimVoid } from './play';
 import { SKINS, TRAILS, WORLDS } from '../config';
 import type { Skin, Trail, World } from '../types';
@@ -56,6 +57,7 @@ function accent(tab: Tab, item: Skin | Trail | World): string {
 }
 
 function buy(tab: Tab, item: Skin | Trail | World): void {
+  if (item.req) return;   // skill-gated items are earned, never bought
   if (Profile.coins < item.price) return;
   Profile.coins -= item.price;
   Store.set('coil_coins', Profile.coins);
@@ -371,6 +373,20 @@ export function renderShop(): void {
     } else if (isOwned) {
       text('TAP TO EQUIP', pcx, y + 117, 10.5, '#9fb0e0', 700, 0);
       btn('eq' + shopTab + item.id, x, y, cw, ch, () => equipFor(shopTab, item.id));
+    } else if (item.req) {
+      // SKILL-GATED — show the requirement + a tiny progress bar, not a price.
+      // (Earned automatically when met; never buyable with coins.)
+      const frac = reqFraction(item.req);
+      text(reqLabel(item.req), pcx, y + 110, 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
+      text(reqProgress(item.req), pcx, y + 123, 8.5, '#8a93bf', 700, 0);
+      const bw2 = cw * 0.6;
+      const bx2 = pcx - bw2 / 2;
+      rr(bx2, y + ch - 12, bw2, 3, 1.5);
+      ctx.fillStyle = 'rgba(255,255,255,.08)';
+      ctx.fill();
+      rr(bx2, y + ch - 12, bw2 * frac, 3, 1.5);
+      ctx.fillStyle = rar.c;
+      ctx.fill();
     } else {
       // price chip
       const priceTxt = item.price.toLocaleString();

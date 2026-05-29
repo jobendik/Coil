@@ -16,9 +16,14 @@ import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
 import { rand, text } from './core/utils';
 import { Telemetry } from './core/telemetry';
+import { claimEarnedUnlocks } from './game/unlocks';
 import { DEBUG } from './config';
 
 Telemetry.session();
+// Grant any skill-gated cosmetics the player already qualifies for (e.g. from
+// progress made before this feature shipped, or a met requirement that was
+// never banked). Idempotent — only grants what isn't already owned.
+claimEarnedUnlocks();
 
 initCanvas();
 resize();

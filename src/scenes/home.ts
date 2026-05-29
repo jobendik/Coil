@@ -26,7 +26,7 @@ function nextGoalLine(): string {
   const nm = MILESTONES.find((m) => m > Profile.best);
   if (nm && Profile.best >= nm * 0.6) return 'Reach ' + nm + ' m';
   if (Profile.best > 0) return 'Beat your best: ' + Profile.best + ' m';
-  const ns = SKINS.find((s) => !Owned.includes(s.id));
+  const ns = SKINS.find((s) => !Owned.includes(s.id) && !s.req);
   if (ns) return 'Unlock ' + ns.name;
   return 'Climb as high as you can';
 }
