@@ -30,6 +30,12 @@ export const NEAR_PERFECT_MIN_COMBO = 5; // only protect chains worth keeping
 
 export const DEBUG = false;
 
+/* CrazyGames leaderboards are invite-only. The submission path is wired and
+   defensive but dormant: flip this to true once invited (and the SDK exposes
+   `leaderboards`) to light up the weekly-height board with zero further work. */
+export const LEADERBOARDS_ENABLED = false;
+export const LEADERBOARD_ID = 'weekly_height';
+
 /* ---------- profile titles ---------- */
 export const TITLES = [
   'Rookie', 'Operator', 'Specialist', 'Commander',

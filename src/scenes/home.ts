@@ -195,7 +195,8 @@ export function renderHome(dt: number): void {
   const pw = W * 0.62;
   const ph = 60;
   const pxx = W / 2 - pw / 2;
-  const pyy = H * 0.79;
+  // Lift the PLAY + secondary row clear of the home-indicator safe area.
+  const pyy = H * 0.79 - view.SAFE_BOTTOM;
   const pulse = 1 + Math.sin(homeT * 3) * 0.02;
   ctx.save();
   ctx.translate(W / 2, pyy + ph / 2);

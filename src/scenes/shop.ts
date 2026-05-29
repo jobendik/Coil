@@ -266,7 +266,7 @@ function drawCoinPill(cx: number, cy: number): void {
 }
 
 export function renderShop(): void {
-  const { ctx, W, H, SAFE_TOP } = view;
+  const { ctx, W, H, SAFE_TOP, SAFE_BOTTOM } = view;
   drawBG();
   dimVoid(0.62);
   const sk = skin();
@@ -321,7 +321,7 @@ export function renderShop(): void {
     const row = Math.floor(i / cols);
     const x = mx + col * (cw + gap);
     const y = gy + row * (ch + gap);
-    if (y > H - 78) continue;
+    if (y > H - 78 - SAFE_BOTTOM) continue;
     const isOwned = owned.includes(item.id);
     const eq = eqId === item.id;
     const can = Profile.coins >= item.price;
@@ -423,7 +423,7 @@ export function renderShop(): void {
   const bw = W * 0.5;
   const bh = 46;
   const bx = W / 2 - bw / 2;
-  const by = H - 64;
+  const by = H - 64 - SAFE_BOTTOM;
   rr(bx, by, bw, bh, 13);
   ctx.fillStyle = 'rgba(20,16,48,.8)';
   ctx.fill();

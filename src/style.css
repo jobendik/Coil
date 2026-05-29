@@ -1,9 +1,26 @@
+/* Self-hosted fonts (latin subset, variable woff2) — bundled + fingerprinted by
+   Vite so the game loads fast and renders correctly inside the CrazyGames iframe
+   with no dependency on the Google Fonts CDN. One variable file per family
+   covers every weight; font-display: swap avoids invisible text. */
+@font-face { font-family: 'Sora'; font-style: normal; font-weight: 400 700; font-display: swap; src: url('./assets/fonts/sora.woff2') format('woff2'); }
+@font-face { font-family: 'Unbounded'; font-style: normal; font-weight: 600 800; font-display: swap; src: url('./assets/fonts/unbounded.woff2') format('woff2'); }
+
 #sat {
   position: fixed;
   top: 0;
   left: 0;
   width: 0;
   height: env(safe-area-inset-top, 0px);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+#sab {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: env(safe-area-inset-bottom, 0px);
   pointer-events: none;
   visibility: hidden;
 }
