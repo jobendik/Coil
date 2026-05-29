@@ -18,13 +18,23 @@ import {
  * the swept path comes to T. Used by the gate + fairness checks so they speak EXACTLY the
  * same physics as real play.
  */
-export function arcMinApproach(n: Node, T: Node, dir: number, relAng: number): number {
+export function arcMinApproach(n: Node, T: Node, dir: number, relAng: number, t0Override?: number): number {
   const pl = state.G.player;
   const tr = T.r + pl.r;
   const plr = pl.r;
   const Wp = view.W - pl.r;
-  const Tx = T.wx;
   const Ty = T.wy;
+  // LEAD PREDICTION — a moving target drifts during the ~0.4 s flight, so we
+  // evaluate its position at each future timestep (same motion equation the
+  // update loop uses), not just where it sits at release. This is what lets the
+  // gate stay HONEST for moving nodes: it aims where the node WILL be. Static
+  // nodes collapse to a constant Tx (amp 0), preserving the old behaviour.
+  const moving = T.type === 'move';
+  const amp = moving ? (T.amp ?? 0) : 0;
+  const spd = T.spd ?? 1;
+  const ph = T.ph ?? 0;
+  const t0 = t0Override ?? (state.G?.t ?? 0);
+  const TxAt = (s: number): number => (moving ? T.baseX + Math.sin((t0 + s * (1 / 60)) * spd + ph) * amp : T.wx);
   let x = n.wx + Math.cos(relAng) * ORBIT;
   let y = n.wy + Math.sin(relAng) * ORBIT;
   const tx = -Math.sin(relAng) * dir;
@@ -45,6 +55,8 @@ export function arcMinApproach(n: Node, T: Node, dir: number, relAng: number): n
     if (x < plr) { x = plr; vx = Math.abs(vx) * WALL; }
     if (x > Wp)  { x = Wp;  vx = -Math.abs(vx) * WALL; }
 
+    // target X at this flight instant (constant for static nodes)
+    const Tx = TxAt(s);
     // squared distance from T to the swept segment (px,py)->(x,y) — no sqrt in the loop
     const abx = x - px;
     const aby = y - py;
@@ -82,6 +94,7 @@ export function gateBand(
   dir: number,
   want: number,
   minStop = 0,
+  t0?: number,
 ): SweetZone {
   const SAMP = 48;
   const st = TAU / SAMP;
@@ -89,7 +102,7 @@ export function gateBand(
   const ok = new Array<boolean>(SAMP);
   let any = false;
   for (let i = 0; i < SAMP; i++) {
-    ok[i] = arcMinApproach(n, T, dir, i * st) < thr;
+    ok[i] = arcMinApproach(n, T, dir, i * st, t0) < thr;
     if (ok[i]) any = true;
   }
   if (!any) return { lo: 0, hi: 0, center: 0, tol: 0, reachable: false };
@@ -110,13 +123,13 @@ export function gateBand(
       if (l >= SAMP) break;
     }
     const c0 = (i + l / 2) * st;
-    if (arcMinApproach(n, T, dir, c0) >= thr) continue;
+    if (arcMinApproach(n, T, dir, c0, t0) >= thr) continue;
     let lo = c0;
     let hi = c0;
     let k = 0;                                                        // march this lobe with real physics
-    while (k < 300 && arcMinApproach(n, T, dir, lo - D) < thr) { lo -= D; k++; }
+    while (k < 300 && arcMinApproach(n, T, dir, lo - D, t0) < thr) { lo -= D; k++; }
     k = 0;
-    while (k < 300 && arcMinApproach(n, T, dir, hi + D) < thr) { hi += D; k++; }
+    while (k < 300 && arcMinApproach(n, T, dir, hi + D, t0) < thr) { hi += D; k++; }
     if (hi - lo > bW) { bW = hi - lo; bLo = lo; bHi = hi; }           // keep the widest marched lobe
     if (minStop && bW >= minStop) break;                              // gen check: a fair-enough lobe is plenty
   }
@@ -127,6 +140,20 @@ export function gateBand(
 }
 
 export function gateWidth(n: Node, T: Node, dir: number): number {
+  if (T.type === 'move') {
+    // A moving target can be flung at from ANY motion phase. The fairness check
+    // must hold for the worst phase, so sample several t0 offsets across the
+    // node's full motion period and take the MINIMUM lit-band width. This makes
+    // generated moving nodes fair no matter when the player releases.
+    const period = TAU / (T.spd ?? 1);
+    let worst = Infinity;
+    const N = 8;
+    for (let k = 0; k < N; k++) {
+      const b = gateBand(n, T, dir, 0, 0.30, (k / N) * period);
+      worst = Math.min(worst, b.reachable ? b.hi - b.lo : 0);
+    }
+    return worst;
+  }
   const b = gateBand(n, T, dir, 0, 0.30);
   return b.reachable ? b.hi - b.lo : 0;
 }

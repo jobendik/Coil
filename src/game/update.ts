@@ -14,8 +14,10 @@ import { Daily } from './daily';
 import { Scores } from './scores';
 import { Vault } from './vault';
 import { Achievements } from './achievements';
+import { claimEarnedUnlocks } from './unlocks';
 import { DailyRun } from './dailyrun';
 import { CG } from '../core/cg';
+import { Telemetry } from '../core/telemetry';
 import { Result } from '../scenes/result';
 import {
   CATCH_PAD,
@@ -28,6 +30,8 @@ import {
   MILE_REWARD,
   MILESTONES,
   NEAR_MISS_RADIUS,
+  NEAR_PERFECT_BAND,
+  NEAR_PERFECT_MIN_COMBO,
   OMEGA,
   ORBIT,
   OVERDRIVE_BASE,
@@ -426,9 +430,22 @@ export function release(): void {
       G.freezeT = 0.18;
     }
   } else {
-    G.combo = Math.max(1, G.combo - 1);
-    SFX.fling();
-    P.ring(pl.wx, sY(pl.wy), skin().c, 12, 220);
+    // NEAR-PERFECT SAVE — one per run. If the player only just missed the
+    // bright window while on a chain worth keeping, forgive it: hold the combo
+    // instead of dropping it. Pure anti-frustration; never grants the perfect's
+    // coins or overdrive, so it can't be farmed.
+    const nearMiss = !!sw && sw.reachable
+      && angDiff(pl.ang, sw.center) <= sw.tol * NEAR_PERFECT_BAND;
+    if (nearMiss && G.combo >= NEAR_PERFECT_MIN_COMBO && !G.nearPerfectUsed) {
+      G.nearPerfectUsed = true;
+      SFX.catch(G.combo);
+      Pop.add(pl.wx, sY(pl.wy) - 18, 'NEAR PERFECT', skin().t);
+      P.ring(pl.wx, sY(pl.wy), skin().t, 16, 240);
+    } else {
+      G.combo = Math.max(1, G.combo - 1);
+      SFX.fling();
+      P.ring(pl.wx, sY(pl.wy), skin().c, 12, 220);
+    }
   }
   G.firstFlingPending = false;
 }
@@ -490,6 +507,7 @@ export function hit(cause: 'void' | 'fall' | 'spike'): void {
   G.dead = true;
   G.deadT = 0;
   pl.latched = false;
+  Telemetry.death(cause, G.height);
   SFX.death();
   buzz(30);
   shake(11, 0.5);
@@ -519,6 +537,7 @@ export function bankRun(): ResultData {
   Profile.addXP(xpGain);
   Profile.addCoins(coins);
   const newBest = Profile.setBest(h);
+  Profile.setBestCombo(mc);
   const leveledUp = Profile.level() > prevLvl;
 
   let missionRewards = 0;
@@ -556,8 +575,17 @@ export function bankRun(): ResultData {
   };
   const achievements = Achievements.check(summary);
 
+  // Skill-gated cosmetics: anything whose requirement is now met is earned for
+  // free (must run AFTER setBest/setBestCombo + achievement checks above).
+  const claimed = claimEarnedUnlocks();
+  const claimedUnlocks = [
+    ...claimed.skins.map((s) => s.name),
+    ...claimed.trails.map((t) => t.name),
+    ...claimed.worlds.map((w) => w.name),
+  ];
+
   if (newBest) CG.happy();
-  if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length) SFX.unlock();
+  if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length || claimedUnlocks.length) SFX.unlock();
 
   return {
     h, mc, perf, coins, newBest, xpGain, leveledUp,
@@ -566,11 +594,14 @@ export function bankRun(): ResultData {
     achievements,
     daily: G.daily,
     dailyMedals,
+    claimedUnlocks,
   };
 }
 
 export function endRun(): void {
+  const G = state.G;
   CG.gameplayStop();
+  Telemetry.runEnd(G.height, G.perfects, G.flings, settings.reducedMotion);
   Result.show(bankRun());
   state.scene = 'over';
 }
@@ -627,6 +658,7 @@ export function revive(): void {
   G.toast = { txt: 'BACK IN!', t: 1.4, c: '#9ffff2' };
   P.ring(pl.wx, sY(pl.wy), '#9ffff2', 24, 320);
   SFX.shield();
+  Telemetry.revive();
 
   state.scene = 'play';
   CG.gameplayStart();

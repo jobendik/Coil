@@ -19,6 +19,15 @@ export const EARLY_EASE_END = 50;        // height (m) at which the boost decays
 export const NEAR_MISS_RADIUS = 90;      // world-px radius for the one-per-run save rescue
 export const DEATH_ANIM = 0.30;          // shortened death animation for snappier restart loop
 
+/* ---------- near-perfect combo protection (anti-rage-quit) ----------
+   Once per run, a fling that JUST misses the perfect window while the player
+   is on a worthwhile chain is forgiven: the combo is preserved (not broken)
+   and the player sees a "NEAR PERFECT" pop. Reduces the "I barely missed and
+   lost my whole combo" frustration the ideas doc calls out, without making
+   perfects free — it's one save, only on a genuine near-miss, only at x5+. */
+export const NEAR_PERFECT_BAND = 1.7;    // miss within tol×this counts as "near"
+export const NEAR_PERFECT_MIN_COMBO = 5; // only protect chains worth keeping
+
 export const DEBUG = false;
 
 /* ---------- profile titles ---------- */
@@ -27,14 +36,16 @@ export const TITLES = [
   'Veteran', 'Elite', 'Mythic', 'Legend',
 ];
 
-/* ---------- skins (cosmetic only — never pay-to-win) ---------- */
+/* ---------- skins (cosmetic only — never pay-to-win) ----------
+   Most are coin-buyable; a couple carry a skill `req` so they're EARNED, not
+   bought (see game/unlocks.ts). price is still shown as the fallback. */
 export const SKINS: Skin[] = [
   { id: 'cyan',   name: 'Pulse', price: 0,    c: '#2ff3e0', t: '#9ffff2', tag: 'Starter' },
   { id: 'amber',  name: 'Ember', price: 250,  c: '#ffb020', t: '#ffe39b', tag: 'Fast' },
   { id: 'pink',   name: 'Neon',  price: 550,  c: '#ff4d8d', t: '#ffb0cd', tag: 'Cute' },
   { id: 'lime',   name: 'Acid',  price: 900,  c: '#9be35a', t: '#dcffb0', tag: 'Zippy' },
-  { id: 'violet', name: 'Void',  price: 1500, c: '#a76bff', t: '#dcc6ff', tag: 'Spooky' },
-  { id: 'white',  name: 'Prism', price: 2600, c: '#ffffff', t: '#cfe9ff', tag: 'Mythic' },
+  { id: 'violet', name: 'Void',  price: 1500, c: '#a76bff', t: '#dcc6ff', tag: 'Spooky', req: { kind: 'height', value: 500 } },
+  { id: 'white',  name: 'Prism', price: 2600, c: '#ffffff', t: '#cfe9ff', tag: 'Mythic', req: { kind: 'ach', value: 'first1k' } },
 ];
 
 /* ---------- trails (flight ribbon styles — cosmetic) ---------- */
@@ -44,7 +55,7 @@ export const TRAILS: Trail[] = [
   { id: 'dots',    name: 'Candy Dots',     price: 320,  style: 'dots',    c: '#ff4d8d', t: '#ffb0cd', tag: 'Pop' },
   { id: 'sparkle', name: 'Stardust',       price: 480,  style: 'sparkle', c: '#cfe9ff', t: '#ffffff', tag: 'Magic' },
   { id: 'bubbles', name: 'Nebula Bubbles', price: 640,  style: 'bubbles', c: '#55d6ff', t: '#d5f8ff', tag: 'Soft' },
-  { id: 'rainbow', name: 'Prism Ribbon',   price: 1400, style: 'rainbow', c: null,      t: null,      tag: 'Rare' },
+  { id: 'rainbow', name: 'Prism Ribbon',   price: 1400, style: 'rainbow', c: null,      t: null,      tag: 'Rare', req: { kind: 'combo', value: 9 } },
 ];
 
 /* ---------- worlds (backdrop + void colour + node accent — cosmetic) ---------- */
@@ -54,7 +65,7 @@ export const WORLDS: World[] = [
   { id: 'crystal', name: 'Crystal Moon', price: 950,  bg: ['#12315d', '#071a36', '#020611'], alt: ['#185372', '#0b294e', '#03101f'], void: '#55d6ff', node: '#cfe9ff', tag: 'Clean' },
   { id: 'sakura',  name: 'Sakura Stars', price: 1300, bg: ['#4c1b38', '#21142d', '#08040f'], alt: ['#693056', '#2c183d', '#120819'], void: '#ff8bc2', node: '#ffd0e4', tag: 'Dream' },
   { id: 'gold',    name: 'Golden Arcade',price: 1800, bg: ['#3b2608', '#171008', '#050302'], alt: ['#5e390a', '#281604', '#090402'], void: '#ffb020', node: '#ffd24a', tag: 'Jackpot' },
-  { id: 'aurora',  name: 'Aurora Void',  price: 2400, bg: ['#092c35', '#071d2b', '#02050b'], alt: ['#123c57', '#102048', '#030714'], void: '#2ff3e0', node: '#9be35a', tag: 'Premium' },
+  { id: 'aurora',  name: 'Aurora Void',  price: 2400, bg: ['#092c35', '#071d2b', '#02050b'], alt: ['#123c57', '#102048', '#030714'], void: '#2ff3e0', node: '#9be35a', tag: 'Premium', req: { kind: 'streak', value: 7 } },
 ];
 
 /* ---------- daily mission goal pool ----------
@@ -87,11 +98,14 @@ export const COMBO_TIERS = [
   { at: 12, label: 'UNREAL!',  color: '#9be35a', payout: 200 },
 ];
 
-/* ---------- zones + milestones ---------- */
+/* ---------- zones + milestones ----------
+   Zones are depth *bands*: they drive the zone-name toast and the background's
+   depth-blend progress (tt). The actual palette is owned by the equipped WORLD
+   (see collection.ts / drawBG), so zones intentionally carry no colours. */
 export const ZONES: Zone[] = [
-  { name: 'NEON ORBIT',  from: 0,   bg: ['#160e33', '#0a0720', '#04030a'] },
-  { name: 'GLITCH STORM', from: 250, bg: ['#2a0f33', '#160a26', '#06030f'] },
-  { name: 'DEEP VOID',   from: 600, bg: ['#0a1430', '#05081c', '#020208'] },
+  { name: 'NEON ORBIT',   from: 0 },
+  { name: 'GLITCH STORM', from: 250 },
+  { name: 'DEEP VOID',    from: 600 },
 ];
 
 export const MILESTONES = [100, 250, 500, 1000, 2000, 4000];

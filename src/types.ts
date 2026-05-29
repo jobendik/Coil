@@ -96,6 +96,7 @@ export interface GameState {
   banked: BankedHwm;
   firstFlingPending: boolean;     // guarantees the first fling of a run lands as PERFECT
   savesUsedThisRun: number;       // near-miss snap-rescue counter (1 allowed)
+  nearPerfectUsed: boolean;       // near-perfect combo protection spent (1 per run)
   comboTierReached: number;       // highest COMBO_TIERS index already celebrated
   comboFlash: number;             // 0..1 brief screen-tint pulse on milestones
   comboFlashColor: string;        // color of the active milestone flash
@@ -113,6 +114,16 @@ export interface GameState {
   bestNearShown: boolean;         // honest "so close to your best" toast (once per run)
 }
 
+/** An alternate, skill-based unlock route for a cosmetic. When present and met,
+ *  the item is earned for free (auto-claimed) instead of bought with coins —
+ *  giving the catalogue varied routes (height / combo / streak / achievement)
+ *  rather than a pure coin vending machine. Items without a `req` stay coin-buyable. */
+export type UnlockKind = 'height' | 'combo' | 'streak' | 'ach';
+export interface UnlockReq {
+  kind: UnlockKind;
+  value: number | string;   // height m / combo x / streak days / achievement id
+}
+
 export interface Skin {
   id: string;
   name: string;
@@ -120,6 +131,7 @@ export interface Skin {
   c: string;
   t: string;
   tag?: string;
+  req?: UnlockReq;
 }
 
 export type TrailStyle = 'line' | 'comet' | 'dots' | 'sparkle' | 'bubbles' | 'rainbow';
@@ -132,6 +144,7 @@ export interface Trail {
   c: string | null;   // null → inherit the equipped character colour
   t: string | null;
   tag?: string;
+  req?: UnlockReq;
 }
 
 export interface World {
@@ -143,6 +156,7 @@ export interface World {
   void: string;       // void gradient colour
   node: string;       // normal-node accent
   tag?: string;
+  req?: UnlockReq;
 }
 
 export interface Achievement {
@@ -174,7 +188,6 @@ export interface DailyMedal {
 export interface Zone {
   name: string;
   from: number;
-  bg: [string, string, string];
 }
 
 export type GoalKind = 'cum' | 'runmax';
@@ -242,6 +255,7 @@ export interface ResultData {
   achievements: Achievement[];  // achievements newly unlocked this run
   daily: boolean;          // was this the Daily Challenge route
   dailyMedals: DailyMedal[];    // medals freshly earned on this daily run
+  claimedUnlocks: string[];     // names of cosmetics earned for free this run (skill-gated)
 }
 
 export type FxLevel = 'high' | 'medium' | 'low';

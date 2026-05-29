@@ -9,7 +9,7 @@
      overlay layer (on top):    Callout, Flash
    ========================================================================= */
 import { view } from './canvas';
-import { TAU, clamp, glowFX, hexA, lerp, pcount, rand, text } from './utils';
+import { TAU, clamp, fx, glowFX, hexA, lerp, pcount, rand, text } from './utils';
 import { SFX } from './audio';
 
 /** Screen-space anchor for the coin-balance counter (top-right HUD). */
@@ -112,7 +112,9 @@ export const Confetti = {
 /* ---- full-screen colour flash ---- */
 export const Flash = {
   a: 0, c: '#fff',
-  hit(c: string, amt: number): void { this.c = c || '#fff'; this.a = Math.max(this.a, amt || 0.5); },
+  // Full-screen flashes scale with the global motion setting so Reduced Motion
+  // softens (motion 0.35 → ~⅓ strength) or removes them.
+  hit(c: string, amt: number): void { this.c = c || '#fff'; this.a = Math.max(this.a, (amt || 0.5) * fx.motion); },
   upd(dt: number): void { if (this.a > 0) { this.a -= dt * 2.4; if (this.a < 0) this.a = 0; } },
   draw(): void {
     if (this.a <= 0) return;

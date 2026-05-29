@@ -7,6 +7,7 @@ import { DailyRun } from '../game/dailyrun';
 import { Vault } from '../game/vault';
 import { glowFX, TAU, clamp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
+import { Telemetry } from '../core/telemetry';
 import { drawBG, drawTopToggles } from './play';
 import { MILESTONES, SKINS } from '../config';
 
@@ -25,7 +26,7 @@ function nextGoalLine(): string {
   const nm = MILESTONES.find((m) => m > Profile.best);
   if (nm && Profile.best >= nm * 0.6) return 'Reach ' + nm + ' m';
   if (Profile.best > 0) return 'Beat your best: ' + Profile.best + ' m';
-  const ns = SKINS.find((s) => !Owned.includes(s.id));
+  const ns = SKINS.find((s) => !Owned.includes(s.id) && !s.req);
   if (ns) return 'Unlock ' + ns.name;
   return 'Climb as high as you can';
 }
@@ -242,6 +243,7 @@ export function renderHome(dt: number): void {
   text('COLLECTION', rx + half / 2, syy + 15, 12, sk.t, 700, 0);
   text('◎ ' + Profile.coins, rx + half / 2, syy + 31, 10, '#ffe39b', 700, 0);
   btn('shop', rx, syy, half, sh, () => {
+    Telemetry.shopOpen();
     state.scene = 'shop';
   });
 

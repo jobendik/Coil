@@ -1,11 +1,15 @@
 import type { Particle, PopText } from '../types';
 import { view } from './canvas';
-import { TAU, clamp, pcount, rand, text } from './utils';
+import { TAU, clamp, fx, pcount, rand, text } from './utils';
 
 /* ---------- screen shake ---------- */
 export const shakeState = { t: 0, mag: 0 };
 
 export function shake(m: number, t = 0.25): void {
+  // Scaled by the global motion setting (0 disables shake entirely for the
+  // Reduced Motion / prefers-reduced-motion path).
+  m *= fx.motion;
+  if (m <= 0) return;
   shakeState.mag = Math.max(shakeState.mag, m);
   shakeState.t = Math.max(shakeState.t, t);
 }

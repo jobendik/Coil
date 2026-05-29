@@ -15,7 +15,15 @@ import { fxUpd } from './core/fx';
 import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
 import { rand, text } from './core/utils';
+import { Telemetry } from './core/telemetry';
+import { claimEarnedUnlocks } from './game/unlocks';
 import { DEBUG } from './config';
+
+Telemetry.session();
+// Grant any skill-gated cosmetics the player already qualifies for (e.g. from
+// progress made before this feature shipped, or a met requirement that was
+// never banked). Idempotent — only grants what isn't already owned.
+claimEarnedUnlocks();
 
 initCanvas();
 resize();
@@ -28,6 +36,7 @@ let paused = false;
 function startPlay(daily = false): void {
   resetRun(daily);
   maybeShowStartToast();
+  Telemetry.runStart(daily);
   state.scene = 'play';
   CG.gameplayStart();
 }
@@ -186,8 +195,15 @@ function frame(now: number): void {
     fpsN = 0;
     fxCheckT += 1;
     if (fxCheckT >= 2) {
+      // Two-way auto-scaling with hysteresis. A single early GC stutter used to
+      // strip effects for the whole session; now the tier recovers once the
+      // device proves it can sustain a comfortably higher frame rate. The gap
+      // between the down-thresholds (46/36) and up-thresholds (58/52) prevents
+      // oscillation around a boundary.
       if (fx.level === 'high' && fps < 46) fx.level = 'medium';
       else if (fx.level === 'medium' && fps < 36) fx.level = 'low';
+      else if (fx.level === 'low' && fps >= 52) fx.level = 'medium';
+      else if (fx.level === 'medium' && fps >= 58) fx.level = 'high';
     }
   }
   if (DEBUG) {

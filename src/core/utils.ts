@@ -28,6 +28,10 @@ export const fx = {
   level: ((window.devicePixelRatio || 1) < 1.5 && Math.min(screenW, screenH) <= 380
     ? 'medium'
     : 'high') as FxLevel,
+  // Global motion scale (1 = full, 0 = none). Driven by the Reduced Motion
+  // setting / prefers-reduced-motion. Honoured by shake(), Flash, and combo
+  // vignettes so sensitive players keep the game readable and comfortable.
+  motion: 1,
 };
 
 export function glowFX(v: number): number {
@@ -86,6 +90,10 @@ export function text(
   }
   ctx.fillStyle = color;
   ctx.fillText(t, x, y);
-  if (glow) ctx.fillText(t, x, y);
+  // The second pass exists only to deepen the bloom on big headline text. It
+  // doubles fill cost on every glowed string, so reserve it for large labels
+  // (titles/callouts) where the extra punch reads — small HUD/body text gets a
+  // single pass, which is plenty and noticeably cheaper on text-heavy screens.
+  if (glow && size >= 24) ctx.fillText(t, x, y);
   ctx.restore();
 }
