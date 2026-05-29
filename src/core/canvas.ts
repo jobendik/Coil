@@ -5,6 +5,7 @@ export const view = {
   H: 0,
   DPR: 1,
   SAFE_TOP: 8,
+  SAFE_BOTTOM: 0,
 };
 
 export function initCanvas(canvasId = 'cv'): void {
@@ -28,4 +29,8 @@ export function resize(): void {
   const sat = document.getElementById('sat');
   if (sat) inset = sat.getBoundingClientRect().height || 0;
   view.SAFE_TOP = Math.round(inset) + 6;
+  let insetB = 0;
+  const sab = document.getElementById('sab');
+  if (sab) insetB = sab.getBoundingClientRect().height || 0;
+  view.SAFE_BOTTOM = Math.round(insetB);
 }

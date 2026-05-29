@@ -1,4 +1,6 @@
 import { settings, setMuted } from '../settings';
+import { Store } from './store';
+import { LEADERBOARDS_ENABLED, LEADERBOARD_ID } from '../config';
 
 /**
  * Defensive CrazyGames v3 SDK wrapper. Every call is guarded so the game is
@@ -20,10 +22,14 @@ interface CGGameApi {
 interface CGAdApi {
   requestAd: (kind: 'midgame' | 'rewarded', handlers: CGAdHandlers) => void;
 }
+interface CGLeaderboardApi {
+  submitScore?: (id: string, score: number) => unknown;
+}
 interface CGSdk {
   init: () => Promise<void>;
   game: CGGameApi;
   ad: CGAdApi;
+  leaderboards?: CGLeaderboardApi;
 }
 interface CGWindow {
   CrazyGames?: { SDK?: CGSdk };
@@ -50,6 +56,12 @@ class CGState {
         await cgw.CrazyGames.SDK.init();
         this.sdk = cgw.CrazyGames.SDK;
         this.ready = true;
+        // Cross-device save: if this device is fresh but the player has a cloud
+        // save (logged-in, returning on a new device), pull it down and reload
+        // so every already-imported state object re-reads real progress.
+        if (Store.hydrateFromCloud()) {
+          try { location.reload(); } catch { /* non-browser */ }
+        }
       }
     } catch {
       this.ready = false;
@@ -66,6 +78,14 @@ class CGState {
 
   happy(): void {
     try { this.sdk?.game.happytime(); } catch { /* no-op */ }
+  }
+
+  /** Submit a height to the (invite-only) weekly leaderboard. Dormant unless
+   *  LEADERBOARDS_ENABLED and the SDK actually exposes the API — a safe no-op
+   *  everywhere else, so it can ship today and activate the moment we're invited. */
+  submitHeight(h: number): void {
+    if (!LEADERBOARDS_ENABLED || !this.ready) return;
+    try { this.sdk?.leaderboards?.submitScore?.(LEADERBOARD_ID, h); } catch { /* no-op */ }
   }
 
   private mute(): void {

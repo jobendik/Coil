@@ -41,13 +41,24 @@ function startPlay(daily = false): void {
   CG.gameplayStart();
 }
 
-let replayCount = 0;
+// Interstitials are gated by WALL-CLOCK time, not replay count. CrazyGames' ad
+// policy expects a minimum gap between interstitials and no interruption of the
+// first session — a count-based cadence (every Nth replay) fires far too often
+// for a game with 20–60 s runs and risks both a policy flag and churn. We allow
+// the first interstitial only after the player has been in the session a while,
+// then enforce a minimum gap between them.
+const AD_MIN_GAP_MS = 180_000;        // ≥3 min between interstitials
+const AD_FIRST_DELAY_MS = 150_000;    // no interstitial in the opening minutes
+let lastInterstitialT = performance.now() - (AD_MIN_GAP_MS - AD_FIRST_DELAY_MS);
+
 function requestReplay(daily = false): void {
-  replayCount++;
-  // Every 3rd replay shows a midgame interstitial. When the SDK is unavailable
-  // (off-platform), CG.midgame fires `done` immediately.
-  if (CG.ready && replayCount % 3 === 0) CG.midgame(() => startPlay(daily));
-  else startPlay(daily);
+  const now = performance.now();
+  if (CG.ready && now - lastInterstitialT >= AD_MIN_GAP_MS) {
+    lastInterstitialT = now;
+    CG.midgame(() => startPlay(daily));
+  } else {
+    startPlay(daily);
+  }
 }
 
 // Home PLAY is the player's first action of a session → never gate with an ad.

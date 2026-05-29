@@ -584,7 +584,7 @@ export function bankRun(): ResultData {
     ...claimed.worlds.map((w) => w.name),
   ];
 
-  if (newBest) CG.happy();
+  if (newBest) { CG.happy(); CG.submitHeight(Profile.best); }
   if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length || claimedUnlocks.length) SFX.unlock();
 
   return {
