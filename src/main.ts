@@ -17,7 +17,7 @@ import { fx } from './core/utils';
 import { clamp, rand, text } from './core/utils';
 import { Telemetry } from './core/telemetry';
 import { claimEarnedUnlocks } from './game/unlocks';
-import { DEBUG } from './config';
+import { DEBUG, DOOM_TIMESCALE } from './config';
 
 Telemetry.session();
 // Grant any skill-gated cosmetics the player already qualifies for (e.g. from
@@ -172,7 +172,11 @@ function frame(now: number): void {
     // slows together; the timer itself counts down in real time so it ends when
     // expected. The fixed timestep is preserved → physics stay deterministic.
     let ts = 1;
-    if (state.G && state.G.focusT > 0) {
+    if (state.G && state.G.doomed && !state.G.dead) {
+      // Doomed fling: fast-forward the inevitable fall (real physics still run,
+      // so wall-bounce luck and the near-miss rescue can still save you — sooner).
+      ts = DOOM_TIMESCALE;
+    } else if (state.G && state.G.focusT > 0) {
       state.G.focusT = Math.max(0, state.G.focusT - dt);
       ts = 0.55;
     }

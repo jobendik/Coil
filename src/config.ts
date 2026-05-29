@@ -28,6 +28,18 @@ export const DEATH_ANIM = 0.30;          // shortened death animation for snappi
 export const NEAR_PERFECT_BAND = 1.7;    // miss within tol×this counts as "near"
 export const NEAR_PERFECT_MIN_COMBO = 5; // only protect chains worth keeping
 
+/* ---------- doomed-flight fast-forward (anti-dead-time) ----------
+   A gentle launch means a hopeless fling can float up and drift down for 3–4 s
+   before death registers — pure boredom. When a lookahead proves the flight will
+   only ever reach the void/bottom with no catch, we run the clock faster so the
+   inevitable resolves quickly. Real physics still run, so wall-bounce luck and
+   the near-miss rescue still fire — just sooner. */
+export const DOOM_TIMESCALE = 2.8;
+
+/* Upward velocity of the shield / Zen bottom bounce. High enough that the player
+   clearly launches back up and visibly re-attaches to a gate (was too low). */
+export const BOUNCE_VY = 1040;
+
 export const DEBUG = false;
 
 /* CrazyGames leaderboards are invite-only. The submission path is wired and
