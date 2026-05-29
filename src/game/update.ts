@@ -368,7 +368,10 @@ export function release(): void {
     } else {
       Pop.add(sx, sy - 18, `PERFECT x${G.combo}`, '#fff');
     }
-    shake(2.5, 0.12);
+    // Less is more: keep low combos clean and readable (the next node must
+    // never be hidden). Shake only fades in once a chain is building, so the
+    // screen settles between hits and the big moments below stand out.
+    if (G.combo >= 4) shake(1 + (G.combo - 4) * 0.35, 0.1);
     pl.zap = 0.25;
     // shock ring scales with the chain so a long combo visibly hits harder
     Shock.ring(sx, sy, G.combo >= 8 ? '#ffd24a' : skin().c, { r0: pl.r, r1: 50 + G.combo * 8, lw: 3 + G.combo * 0.3, life: 0.42 });
@@ -382,15 +385,20 @@ export function release(): void {
         const bonus = tier.payout * G.coinMult * fMul;
         G.coins += bonus;
         if (G.frenzyT > 0) G.frenzyBanked += bonus;
-        G.comboFlash = 1;
+        // Vignette pop scales with tier — gentle at x3/x5, full at x8/x12 — so
+        // the screen reads as "warming up" then "erupting" instead of one flat
+        // blast every few seconds.
+        G.comboFlash = i >= 2 ? 1 : 0.45 + i * 0.18;
         G.comboFlashColor = tier.color;
         Pop.add(sx, sy + 18, `${tier.label}  +${bonus} ◎`, tier.color);
         P.ring(sx, sy, tier.color, 30 + i * 6, 420 + i * 60);
         P.burst(sx, sy, 18 + i * 4, tier.color, 320 + i * 50, 0.6, 4);
         Confetti.burst(sx, sy, 8 + i * 4);
         Rays.burst(sx, sy, tier.color, 8 + i * 2);
-        Flash.hit(tier.color, 0.1 + i * 0.05);
-        shake(4 + i * 1.2, 0.18 + i * 0.04);
+        // Full-screen flash is a "big moment" cue — reserve it for x8/x12 so the
+        // genuine peaks (Frenzy, New Best, Vault) keep their impact by contrast.
+        if (i >= 2) Flash.hit(tier.color, 0.18 + (i - 2) * 0.12);
+        shake(i >= 2 ? 5 + (i - 2) * 2 : 2 + i, 0.16 + i * 0.04);
         SFX.milestone();
         if (i >= 2) SFX.chaching();
         CG.happy();
