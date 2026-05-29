@@ -384,10 +384,68 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
   }
   G.target = n.next;
   computeSweetZone();
+  advanceConstellation(n);
   if (G.tut === 0) {
     G.tut = 1;
     G.tutT = 0;
   }
+}
+
+/** Track constellation-chain progress on each catch: a PERFECT fling onto the
+ *  next expected member advances the chain; landing the 3rd completes it. Any
+ *  non-perfect catch (or a gap) breaks the active chain. */
+function advanceConstellation(n: Node): void {
+  const G = state.G;
+  if (n.constel == null) {
+    if (G.constelProg > 0) { G.constelProg = 0; G.constelActive = -1; }
+    return;
+  }
+  const perfect = G.lastReleasePerfect;
+  const expected = n.cidx === G.constelProg && (G.constelProg === 0 || G.constelActive === n.constel);
+  if (perfect && expected) {
+    G.constelActive = n.constel;
+    G.constelProg++;
+    const cx = n.wx;
+    const cy = sY(n.wy);
+    if (G.constelProg >= 3) {
+      completeConstellation(cx, cy);
+    } else {
+      SFX.coin();
+      Pop.add(cx, cy - 24, '✦'.repeat(G.constelProg), '#cdb4ff');
+      P.ring(cx, cy, '#a76bff', 14, 240);
+    }
+  } else {
+    // missed the timing on a marked node — the chain resets
+    G.constelActive = -1;
+    G.constelProg = 0;
+  }
+}
+
+function completeConstellation(cx: number, cy: number): void {
+  const G = state.G;
+  const { W, H } = view;
+  G.constelActive = -1;
+  G.constelProg = 0;
+  G.constellations++;
+  if (!G.zen) Profile.addConstellations(1);   // lifetime (real modes only) → unlock + achievement
+  const fMul = G.frenzyT > 0 ? FRENZY_COIN_MULT : 1;
+  const reward = 80 * G.coinMult * fMul;
+  G.coins += reward;
+  if (G.frenzyT > 0) G.frenzyBanked += reward;
+  Callout.add('CONSTELLATION ✦  +' + reward + ' ◎', '#cdb4ff', true);
+  SFX.riser(0.45);
+  SFX.chaching();
+  cymbal(0.4);
+  Flash.hit('#a76bff', 0.28);
+  Shock.ring(cx, cy, '#cdb4ff', { r0: 16, r1: Math.max(W, H) * 0.9, lw: 6, life: 0.65, fill: true });
+  Rays.burst(cx, cy, '#cdb4ff', 18);
+  Sparkles.scatter(22, '#cdb4ff');
+  P.ring(cx, cy, '#cdb4ff', 28, 380);
+  FlyCoins.send(cx, cy, 12, bankXY().x, bankXY().y);
+  shake(6, 0.3);
+  buzz([20, 30, 20, 40]);
+  CG.happy();
+  G.freezeT = 0.16;
 }
 
 export function release(): void {
@@ -505,6 +563,9 @@ export function release(): void {
       P.ring(pl.wx, sY(pl.wy), skin().c, 12, 220);
     }
   }
+  // Record whether this fling was perfect — the next latch uses it to advance a
+  // constellation chain. (firstFlingPending counts as perfect.)
+  G.lastReleasePerfect = isPerfect;
   G.firstFlingPending = false;
 }
 
@@ -642,6 +703,7 @@ export function bankRun(): ResultData {
     streak: Profile.streak,
     potWon: G.jackpotHit,
     daily: G.daily,
+    constellations: Profile.constellations,
   };
   const achievements = zen ? [] : Achievements.check(summary);
 
@@ -665,6 +727,7 @@ export function bankRun(): ResultData {
     achievements,
     daily: G.daily,
     zen,
+    constellations: G.constellations,
     dailyMedals,
     claimedUnlocks,
   };

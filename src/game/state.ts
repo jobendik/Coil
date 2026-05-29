@@ -73,6 +73,12 @@ export function resetRun(daily = false, zen = false): void {
     potWon: 0,
     freezeT: 0,
     bestNearShown: false,
+    constelActive: -1,
+    constelProg: 0,
+    constellations: 0,
+    lastReleasePerfect: false,
+    _constelPending: 0,
+    _constelGroup: 0,
     player: {
       wx: W / 2,
       wy: -30,

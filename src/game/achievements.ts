@@ -14,6 +14,8 @@ export const ACH: Achievement[] = [
   { id: 'streak7',  t: 'WEEK ONE',      d: '7 day streak',         test: (r) => r.streak >= 7 },
   { id: 'vault',    t: 'VAULT BREAKER', d: 'Win the Star Vault',   test: (r) => r.potWon },
   { id: 'daily',    t: 'DAILY RUNNER',  d: 'Finish a Daily Challenge', test: (r) => r.daily },
+  { id: 'constel5', t: 'STARWEAVER',    d: 'Complete 5 constellations',  test: (r) => r.constellations >= 5 },
+  { id: 'constel20',t: 'CONSTELLER',    d: 'Complete 20 constellations', test: (r) => r.constellations >= 20 },
 ];
 
 export const Achievements = {

@@ -22,6 +22,7 @@ export function reqMet(req: UnlockReq): boolean {
     case 'height': return Profile.best >= (req.value as number);
     case 'combo':  return Profile.bestCombo >= (req.value as number);
     case 'streak': return Profile.streak >= (req.value as number);
+    case 'constel': return Profile.constellations >= (req.value as number);
     case 'ach':    return !!Achievements.unlocked[req.value as string];
   }
 }
@@ -32,6 +33,7 @@ export function reqLabel(req: UnlockReq): string {
     case 'height': return 'REACH ' + req.value + ' M';
     case 'combo':  return 'CHAIN x' + req.value;
     case 'streak': return req.value + '-DAY STREAK';
+    case 'constel': return req.value + ' CONSTELLATIONS';
     case 'ach':    return 'ACHIEVEMENT';
   }
 }
@@ -42,6 +44,7 @@ export function reqProgress(req: UnlockReq): string {
     case 'height': return Math.min(Profile.best, req.value as number) + ' / ' + req.value + ' m';
     case 'combo':  return 'x' + Math.min(Profile.bestCombo, req.value as number) + ' / x' + req.value;
     case 'streak': return Math.min(Profile.streak, req.value as number) + ' / ' + req.value + ' days';
+    case 'constel': return Math.min(Profile.constellations, req.value as number) + ' / ' + req.value;
     case 'ach':    return 'locked';
   }
 }
@@ -53,6 +56,7 @@ export function reqFraction(req: UnlockReq): number {
     case 'height': return Math.min(1, Profile.best / v);
     case 'combo':  return Math.min(1, Profile.bestCombo / v);
     case 'streak': return Math.min(1, Profile.streak / v);
+    case 'constel': return Math.min(1, Profile.constellations / v);
     case 'ach':    return reqMet(req) ? 1 : 0;
   }
 }
