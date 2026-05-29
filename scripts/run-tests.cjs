@@ -24,7 +24,8 @@ global.document = { getElementById: (id) => elements[id] || null, addEventListen
   createElement: () => fakeCanvas(), hidden: false };
 global.window = { devicePixelRatio: 2, screen: { width: W, height: H }, addEventListener() {},
   matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
-  AudioContext: function () { return {}; }, performance: { now: () => 0 } };
+  // No AudioContext → ac() returns null and all SFX become no-ops in tests.
+  AudioContext: undefined, performance: { now: () => 0 } };
 const _ls = {};
 global.localStorage = { getItem: (k) => (k in _ls ? _ls[k] : null),
   setItem: (k, v) => { _ls[k] = String(v); }, removeItem: (k) => { delete _ls[k]; } };

@@ -20,6 +20,7 @@ import { CG } from '../core/cg';
 import { Telemetry } from '../core/telemetry';
 import { Result } from '../scenes/result';
 import {
+  BOUNCE_VY,
   CATCH_PAD,
   COMBO_TIERS,
   DEATH_ANIM,
@@ -143,6 +144,16 @@ export function update(dt: number): void {
     }
     pl.lastReleasedT += dt;
     if (pl.lastReleasedT > 0.25) pl.lastReleased = null;
+    // Doom lookahead (throttled): once a fling provably can't catch anything, flag
+    // it so the main loop fast-forwards the inevitable fall instead of making the
+    // player watch it for 3–4 s. Re-checked periodically so moving nodes are fair.
+    if (!G.dead && !G.zen) {
+      G._doomTick = (G._doomTick ?? 0) + 1;
+      if (!G.doomed && G._doomTick >= 4) {
+        G._doomTick = 0;
+        if (predictDoom()) G.doomed = true;
+      }
+    }
   }
 
   G.maxY = Math.max(G.maxY, pl.wy);
@@ -241,10 +252,11 @@ export function update(dt: number): void {
       return;
     }
   } else if (!pl.latched && sY(pl.wy) > H + 40) {
-    // ZEN: there is no death. Drop off the bottom of the screen and you're gently
-    // flung back up into play to keep climbing.
-    pl.vy = 980;
+    // ZEN: there is no death. Drop off the bottom of the screen and you're flung
+    // back up into play — high enough to clearly re-reach and re-attach to a gate.
+    pl.vy = BOUNCE_VY;
     pl.vx *= 0.4;
+    G.doomed = false;
     G.invuln = 0.5;
     SFX.shield();
     P.ring(pl.wx, sY(pl.wy), skin().t, 16, 240);
@@ -327,11 +339,49 @@ export function update(dt: number): void {
   }
 }
 
+/**
+ * Replays the real ballistic flight from the player's current state — same
+ * gravity, wall bounces, catch radius and moving-node prediction the live loop
+ * uses — and returns true only if the path reaches the void / bottom WITHOUT
+ * ever catching a gate. Deterministic with the real flight, so a false "doomed"
+ * is impossible for static nodes; for moving nodes any error is harmless (the
+ * real catch still happens during the fast-forward, just sooner).
+ */
+function predictDoom(): boolean {
+  const G = state.G;
+  const pl = G.player;
+  const { W, H } = view;
+  const dt = 1 / 60;
+  let x = pl.wx;
+  let y = pl.wy;
+  let vx = pl.vx;
+  let vy = pl.vy;
+  for (let i = 0; i < 320; i++) {
+    vy -= G_FALL * dt;
+    x += vx * dt;
+    y += vy * dt;
+    if (x < pl.r) { x = pl.r; vx = Math.abs(vx) * WALL; }
+    if (x > W - pl.r) { x = W - pl.r; vx = -Math.abs(vx) * WALL; }
+    for (const n of G.nodes) {
+      if (n.type === 'spike') continue;
+      if (n === pl.lastReleased && i < 16) continue;   // matches the 0.25 s re-catch lockout
+      const nx = n.type === 'move'
+        ? n.baseX + Math.sin((G.t + i * dt) * (n.spd ?? 1) + (n.ph ?? 0)) * (n.amp ?? 0)
+        : n.wx;
+      if (Math.hypot(x - nx, y - n.wy) < n.r + pl.r + CATCH_PAD) return false;  // will catch → safe
+    }
+    if (y <= G.voidY + pl.r) return true;          // reaches the void
+    if (y < G.cameraY - 160) return true;          // falls off the bottom
+  }
+  return true;   // ~5 s without a catch — doomed
+}
+
 export function latch(n: Node, _d: number, dx: number, dy: number): void {
   const G = state.G;
   const pl = G.player;
   const { W, H } = view;
   pl.latched = true;
+  G.doomed = false;     // caught a gate — no longer falling to our doom
   pl.node = n;
   pl.ang = Math.atan2(dy, dx);
   const cross = pl.vx * Math.sin(pl.ang) - pl.vy * Math.cos(pl.ang);
@@ -579,8 +629,9 @@ export function hit(cause: 'void' | 'fall' | 'spike'): void {
   if (G.shield) {
     G.shield = false;
     G.invuln = 0.7;
-    pl.vy = 720;
+    pl.vy = BOUNCE_VY;     // strong, visible launch back up to re-attach to a gate
     pl.latched = false;
+    G.doomed = false;
     SFX.shield();
     shake(7, 0.3);
     P.ring(pl.wx, sY(pl.wy), '#9ffff2', 26, 360);
@@ -604,6 +655,7 @@ export function hit(cause: 'void' | 'fall' | 'spike'): void {
       G.savesUsedThisRun = 1;
       G.invuln = 0.8;
       pl.latched = true;
+      G.doomed = false;
       pl.node = best;
       pl.ang = Math.atan2(pl.wy - best.wy, pl.wx - best.wx);
       pl.dir = Math.random() > 0.5 ? 1 : -1;
@@ -771,6 +823,7 @@ export function revive(): void {
   }
 
   pl.latched = true;
+  G.doomed = false;
   pl.node = best;
   pl.ang = -Math.PI / 2;
   pl.dir = 1;

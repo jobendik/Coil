@@ -73,6 +73,8 @@ export function resetRun(daily = false, zen = false): void {
     potWon: 0,
     freezeT: 0,
     bestNearShown: false,
+    doomed: false,
+    _doomTick: 0,
     constelActive: -1,
     constelProg: 0,
     constellations: 0,

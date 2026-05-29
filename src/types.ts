@@ -117,6 +117,8 @@ export interface GameState {
   potWon: number;                 // ★ amount won from the vault this run (for the result screen)
   freezeT: number;                // brief anticipation hold after a huge event
   bestNearShown: boolean;         // honest "so close to your best" toast (once per run)
+  doomed: boolean;                // lookahead proved this fling can't catch — fast-forward to death
+  _doomTick?: number;             // throttle counter for the doom lookahead
   // ---- constellation chains (signature in-run skill objective) ----
   constelActive: number;          // group id of the chain currently in progress (-1 = none)
   constelProg: number;            // perfects landed in the active chain so far (0..3)
