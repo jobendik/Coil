@@ -1,4 +1,4 @@
-import type { Node, NodeType } from '../types';
+import type { Node, NodeType, SparkKind } from '../types';
 import { view } from '../core/canvas';
 import { state } from './state';
 import { TAU, clamp, lerp } from '../core/utils';
@@ -134,20 +134,25 @@ export function genNode(): void {
     });
   }
 
-  // collectibles
-  if (rnd() < 0.5) {
+  // collectibles — a coin most of the time, occasionally a power-up.
+  const cr = rnd();
+  if (cr < 0.5) {
     G.sparks.push({
       wx: clamp(nx + rrand(-55, 55), 20, W - 20),
       wy: ny - gap * 0.5,
       got: false,
       kind: 'spark',
     });
-  } else if (hm > 240 && rnd() < 0.05) {
+  } else if (hm > 120 && cr < 0.57) {
+    // ~7% power-up node after 120 m. Focus is the most common (relief/precision),
+    // then Magnet (coin forgiveness), with the rarer Shield gated higher.
+    const pu = rnd();
+    const kind: SparkKind = (hm > 240 && pu < 0.38) ? 'shield' : pu < 0.7 ? 'focus' : 'magnet';
     G.sparks.push({
       wx: clamp(nx + rrand(-50, 50), 20, W - 20),
       wy: ny - gap * 0.5,
       got: false,
-      kind: 'shield',
+      kind,
     });
   }
 }

@@ -77,6 +77,7 @@ export function update(dt: number): void {
 
   if (G.invuln > 0) G.invuln -= dt;
   if (pl.zap > 0) pl.zap -= dt;
+  if (G.magnetT > 0) G.magnetT -= dt;
   if (G.comboFlash > 0) G.comboFlash = Math.max(0, G.comboFlash - dt * 2.4);
   if (G.dead) {
     G.deadT += dt;
@@ -201,31 +202,72 @@ export function update(dt: number): void {
   let z = 0;
   for (let i = 0; i < ZONES.length; i++) if (G.height >= ZONES[i].from) z = i;
   if (z !== G.zone) {
+    const advancing = z > G.zone;
     G.zone = z;
-    G.toast = { txt: ZONES[z].name, t: 1.6, c: skin().t };
+    if (advancing) {
+      // Entering a new zone is a milestone — give it a real "chapter" beat so the
+      // endless climb feels like progress through distinct places.
+      const { W, H } = view;
+      const c = skin().t;
+      Callout.add('ENTERING ' + ZONES[z].name, c, true);
+      SFX.riser(0.4);
+      cymbal(0.35);
+      Flash.hit(c, 0.16);
+      Shock.ring(W / 2, H * 0.4, c, { r0: 20, r1: Math.max(W, H) * 0.95, lw: 6, life: 0.6 });
+      Sparkles.scatter(18, c);
+      shake(4, 0.2);
+      buzz([20, 30]);
+      CG.happy();
+    } else {
+      G.toast = { txt: ZONES[z].name, t: 1.6, c: skin().t };
+    }
   }
 
-  // void pressure — a SKILL-FAIR chaser (not a timer). It creeps up steadily but slower than
-  // efficient climbing, and never lags more than 'lead' behind your highest point. So good
-  // play stays ahead indefinitely; hesitating on the orbit or missing a node is what the void
-  // punishes. The lead shrinks over time to keep raising the pressure. (Was a quadratic timer
-  // that capped every player — even flawless ones — at the same height.)
-  const lead = lerp(H * 1.45, H * 0.9, clamp(G.t / 110, 0, 1));
-  G.voidY += (26 + clamp(G.t, 0, 110) * 0.40 + Math.max(0, G.t - 110) * 0.05) * dt;
-  G.voidY = Math.max(G.voidY, G.maxY - lead);
-  if (G.invuln <= 0 && pl.wy <= G.voidY + pl.r) {
-    hit('void');
-    return;
-  }
-  if (sY(pl.wy) > H + 160 && !pl.latched && G.invuln <= 0) {
-    hit('fall');
-    return;
+  if (!G.zen) {
+    // void pressure — a SKILL-FAIR chaser (not a timer). It creeps up steadily but slower than
+    // efficient climbing, and never lags more than 'lead' behind your highest point. So good
+    // play stays ahead indefinitely; hesitating on the orbit or missing a node is what the void
+    // punishes. The lead shrinks over time to keep raising the pressure. (Was a quadratic timer
+    // that capped every player — even flawless ones — at the same height.)
+    const lead = lerp(H * 1.45, H * 0.9, clamp(G.t / 110, 0, 1));
+    G.voidY += (26 + clamp(G.t, 0, 110) * 0.40 + Math.max(0, G.t - 110) * 0.05) * dt;
+    G.voidY = Math.max(G.voidY, G.maxY - lead);
+    if (G.invuln <= 0 && pl.wy <= G.voidY + pl.r) {
+      hit('void');
+      return;
+    }
+    if (sY(pl.wy) > H + 160 && !pl.latched && G.invuln <= 0) {
+      hit('fall');
+      return;
+    }
+  } else if (!pl.latched && sY(pl.wy) > H + 40) {
+    // ZEN: there is no death. Drop off the bottom of the screen and you're gently
+    // flung back up into play to keep climbing.
+    pl.vy = 980;
+    pl.vx *= 0.4;
+    G.invuln = 0.5;
+    SFX.shield();
+    P.ring(pl.wx, sY(pl.wy), skin().t, 16, 240);
+    Shock.ring(pl.wx, H - 8, skin().t, { r0: 10, r1: 80, lw: 3, life: 0.4 });
+    G.toast = { txt: 'BOUNCE', t: 0.7, c: skin().t };
   }
 
-  // collectibles
+  // collectibles (MAGNET pulls coins toward the player; FOCUS/MAGNET are timed power-ups)
+  const magnet = G.magnetT > 0;
   for (const s of G.sparks) {
     if (s.got) continue;
-    if (Math.hypot(pl.wx - s.wx, pl.wy - s.wy) < 24) {
+    if (magnet && s.kind === 'spark') {
+      const dx = pl.wx - s.wx;
+      const dy = pl.wy - s.wy;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < 220) {
+        const pull = Math.min(1, (0.4 + (1 - d / 220) * 1.1) * dt * 9);
+        s.wx += dx * pull;
+        s.wy += dy * pull;
+      }
+    }
+    const cr = (magnet && s.kind === 'spark') ? 44 : 24;
+    if (Math.hypot(pl.wx - s.wx, pl.wy - s.wy) < cr) {
       s.got = true;
       if (s.kind === 'shield') {
         G.shield = true;
@@ -233,6 +275,20 @@ export function update(dt: number): void {
         P.ring(s.wx, sY(s.wy), '#9ffff2', 16, 200);
         Rays.burst(s.wx, sY(s.wy), '#9ffff2', 10);
         Pop.add(s.wx, sY(s.wy), 'SHIELD', '#9ffff2');
+      } else if (s.kind === 'focus') {
+        G.focusT = 3.2;
+        SFX.bonus();
+        buzz(12);
+        P.ring(s.wx, sY(s.wy), '#a76bff', 22, 280);
+        Rays.burst(s.wx, sY(s.wy), '#cdb4ff', 10);
+        Pop.add(s.wx, sY(s.wy), 'FOCUS', '#cdb4ff');
+      } else if (s.kind === 'magnet') {
+        G.magnetT = 6.5;
+        SFX.bonus();
+        buzz(12);
+        P.ring(s.wx, sY(s.wy), '#55d6ff', 22, 280);
+        Rays.burst(s.wx, sY(s.wy), '#a9ecff', 10);
+        Pop.add(s.wx, sY(s.wy), 'MAGNET', '#a9ecff');
       } else {
         const got = 2 * G.coinMult * (G.frenzyT > 0 ? FRENZY_COIN_MULT : 1);
         G.coins += got;
@@ -249,8 +305,10 @@ export function update(dt: number): void {
   }
 
   while (G.lastNodeY < pl.wy + H * 1.5) genNode();
-  G.nodes = G.nodes.filter((n) => n.wy > G.voidY - 120);
-  G.sparks = G.sparks.filter((s) => !s.got && s.wy > G.voidY - 120);
+  // In Zen the void never rises, so cull below the camera instead of the void line.
+  const cullY = G.zen ? G.cameraY - 200 : G.voidY - 120;
+  G.nodes = G.nodes.filter((n) => n.wy > cullY);
+  G.sparks = G.sparks.filter((s) => !s.got && s.wy > cullY);
 
   if (G.tut >= 0) {
     G.tutT += dt;
@@ -453,7 +511,11 @@ export function release(): void {
 export function hit(cause: 'void' | 'fall' | 'spike'): void {
   const G = state.G;
   const pl = G.player;
-  if (G.shield && cause !== 'fall') {
+  // ZEN: nothing is lethal — a brief grace window and the run continues.
+  if (G.zen) { G.invuln = 0.4; return; }
+  // Shield now saves EVERY cause (including a fall off the bottom) — one hit,
+  // bounce up, brief invulnerability. (Previously falls slipped past it.)
+  if (G.shield) {
     G.shield = false;
     G.invuln = 0.7;
     pl.vy = 720;
@@ -532,23 +594,31 @@ export function bankRun(): ResultData {
   const dMC = Math.max(0, mc - G.banked.mc);
   const firstEnd = !G.dailyRunCounted;
 
+  // ZEN is a relaxation/practice mode (no death = no risk), so it banks only
+  // coins + XP. It deliberately does NOT touch the personal best, combo record,
+  // daily missions/medals, leaderboard, or achievements — that keeps every
+  // progression gate honestly earned in the real mode and unspoofable via Zen.
+  const zen = G.zen;
+
   const xpGain = dH + dPerf * 6 + dMC * 3 + (firstEnd ? 10 : 0);
   const prevLvl = Profile.level();
   Profile.addXP(xpGain);
   Profile.addCoins(coins);
-  const newBest = Profile.setBest(h);
-  Profile.setBestCombo(mc);
+  const newBest = zen ? false : Profile.setBest(h);
+  if (!zen) Profile.setBestCombo(mc);
   const leveledUp = Profile.level() > prevLvl;
 
   let missionRewards = 0;
-  if (firstEnd) {
-    missionRewards += Daily.report('runs', 1);
-    G.dailyRunCounted = true;
+  if (!zen) {
+    if (firstEnd) {
+      missionRewards += Daily.report('runs', 1);
+      G.dailyRunCounted = true;
+    }
+    missionRewards += Daily.report('perf', dPerf);
+    missionRewards += Daily.report('coins', coins);
+    missionRewards += Daily.report('height', h);
+    missionRewards += Daily.report('combo', mc);
   }
-  missionRewards += Daily.report('perf', dPerf);
-  missionRewards += Daily.report('coins', coins);
-  missionRewards += Daily.report('height', h);
-  missionRewards += Daily.report('combo', mc);
   const dDone = missionRewards > 0;
 
   G.banked.h = h;
@@ -556,7 +626,7 @@ export function bankRun(): ResultData {
   G.banked.mc = mc;
   G.coins = 0;                        // segment coins are now banked
 
-  Scores.add(h);
+  if (!zen) Scores.add(h);
   Vault.save();
 
   // Daily Challenge medals (one-time per day) — only on the final bank of a daily run.
@@ -573,10 +643,11 @@ export function bankRun(): ResultData {
     potWon: G.jackpotHit,
     daily: G.daily,
   };
-  const achievements = Achievements.check(summary);
+  const achievements = zen ? [] : Achievements.check(summary);
 
   // Skill-gated cosmetics: anything whose requirement is now met is earned for
-  // free (must run AFTER setBest/setBestCombo + achievement checks above).
+  // free (must run AFTER setBest/setBestCombo + achievement checks above). In
+  // Zen nothing above updated, so this naturally grants nothing.
   const claimed = claimEarnedUnlocks();
   const claimedUnlocks = [
     ...claimed.skins.map((s) => s.name),
@@ -593,6 +664,7 @@ export function bankRun(): ResultData {
     potWon: G.jackpotHit ? G.potWon : 0,
     achievements,
     daily: G.daily,
+    zen,
     dailyMedals,
     claimedUnlocks,
   };

@@ -21,6 +21,11 @@ export function setDailyHandler(fn: () => void): void {
   onDailyRequested = fn;
 }
 
+let onZenRequested: () => void = () => { /* injected by main.ts */ };
+export function setZenHandler(fn: () => void): void {
+  onZenRequested = fn;
+}
+
 function nextGoalLine(): string {
   if (!Daily.allDone()) return "Complete today's missions";
   const nm = MILESTONES.find((m) => m > Profile.best);
@@ -211,18 +216,21 @@ export function renderHome(dt: number): void {
   text('PLAY', W / 2, pyy + ph / 2, 22, '#04030a', 800, 0, 'center', "'Unbounded'");
   btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
 
-  // secondary row: DAILY CHALLENGE (left) | COLLECTION (right)
-  const sw = W * 0.62;
+  // secondary row: DAILY ✦ · ZEN · COLLECTION (three equal columns)
+  const sw = W * 0.8;
   const sh = 46;
   const sxx = W / 2 - sw / 2;
   const syy = pyy + ph + 12;
-  const sgap = 12;
-  const half = (sw - sgap) / 2;
-  const lx = sxx;
-  const rx = sxx + half + sgap;
+  const sgap = 8;
+  const third = (sw - sgap * 2) / 3;
+  const dx = sxx;
+  const zx = sxx + third + sgap;
+  const cx2 = sxx + (third + sgap) * 2;
   const dm = DailyRun.topMedal();
   const fresh = !DailyRun.played();
-  rr(lx, syy, half, sh, 12);
+
+  // DAILY
+  rr(dx, syy, third, sh, 12);
   ctx.fillStyle = 'rgba(20,16,48,.7)';
   ctx.fill();
   ctx.strokeStyle = fresh ? '#ffd24a' : (dm ? dm.c : 'rgba(255,255,255,.12)');
@@ -230,20 +238,32 @@ export function renderHome(dt: number): void {
   if (fresh) { ctx.shadowColor = '#ffd24a'; ctx.shadowBlur = glowFX(8 + Math.sin(homeT * 4) * 4); }
   ctx.stroke();
   ctx.shadowBlur = 0;
-  text('DAILY ✦', lx + half / 2, syy + 15, 13, fresh ? '#ffd24a' : '#fff', 800, fresh ? 5 : 0);
-  text(DailyRun.played() ? 'Best ' + DailyRun.d.best + ' m' : 'New route today!',
-    lx + half / 2, syy + 31, 9.5, '#9fb0e0', 600, 0);
-  btn('daily', lx, syy, half, sh, () => onDailyRequested());
+  text('DAILY ✦', dx + third / 2, syy + 15, 12, fresh ? '#ffd24a' : '#fff', 800, fresh ? 5 : 0);
+  text(DailyRun.played() ? 'Best ' + DailyRun.d.best + ' m' : 'New today!',
+    dx + third / 2, syy + 31, 9, '#9fb0e0', 600, 0);
+  btn('daily', dx, syy, third, sh, () => onDailyRequested());
 
-  rr(rx, syy, half, sh, 12);
+  // ZEN — the calm, unkillable mode
+  rr(zx, syy, third, sh, 12);
+  ctx.fillStyle = 'rgba(20,16,48,.7)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(149,227,90,.45)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  text('ZEN', zx + third / 2, syy + 15, 13, '#9be35a', 800, 0);
+  text('No fail · relax', zx + third / 2, syy + 31, 9, '#9fb0e0', 600, 0);
+  btn('zen', zx, syy, third, sh, () => onZenRequested());
+
+  // COLLECTION
+  rr(cx2, syy, third, sh, 12);
   ctx.fillStyle = 'rgba(20,16,48,.7)';
   ctx.fill();
   ctx.strokeStyle = 'rgba(255,255,255,.12)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
-  text('COLLECTION', rx + half / 2, syy + 15, 12, sk.t, 700, 0);
-  text('◎ ' + Profile.coins, rx + half / 2, syy + 31, 10, '#ffe39b', 700, 0);
-  btn('shop', rx, syy, half, sh, () => {
+  text('SHOP', cx2 + third / 2, syy + 15, 12, sk.t, 700, 0);
+  text('◎ ' + Profile.coins, cx2 + third / 2, syy + 31, 9, '#ffe39b', 700, 0);
+  btn('shop', cx2, syy, third, sh, () => {
     Telemetry.shopOpen();
     state.scene = 'shop';
   });

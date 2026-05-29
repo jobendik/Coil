@@ -5,11 +5,18 @@ import { trail, world } from '../game/collection';
 import { Profile } from '../game/profile';
 import { Pop } from '../core/particles';
 import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
-import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, rand, text } from '../core/utils';
+import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, pcount, rand, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { settings, setAimPreview, setMuted, setMusicMuted, setReducedMotion } from '../settings';
 import { rr } from '../core/utils';
 import { CATCH_PAD, DAILY_MEDALS, G_FALL, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
+
+// Injected by main.ts so the Zen "DONE" button can bank the run without play.ts
+// importing the game-loop module (avoids a scene↔loop import cycle).
+let onZenExit: () => void = () => { /* injected by main.ts */ };
+export function setZenExitHandler(fn: () => void): void {
+  onZenExit = fn;
+}
 
 /* ---------- starfield (one per session) ---------- */
 const STARS = (() => {
@@ -21,6 +28,22 @@ const STARS = (() => {
       d: rand(0.08, 0.45),
       s: rand(1, 2.4),
       a: rand(0.12, 0.4),
+    });
+  }
+  return arr;
+})();
+
+/* ---------- parallax nebula clouds (soft depth behind the stars) ---------- */
+const NEBULA = (() => {
+  const arr: Array<{ x: number; y: number; d: number; r: number; a: number; c: number }> = [];
+  for (let i = 0; i < 6; i++) {
+    arr.push({
+      x: Math.random(),
+      y: Math.random(),
+      d: rand(0.05, 0.22),      // shallow parallax → reads as far away
+      r: rand(120, 260),
+      a: rand(0.05, 0.11),
+      c: i % 2,                 // alternate between the world's node + void accents
     });
   }
   return arr;
@@ -60,6 +83,27 @@ export function drawBG(): void {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
   const cam = state.G?.cameraY ?? 0;
+
+  // Parallax nebula clouds — soft additive glow that drifts as you climb, giving
+  // the void real depth. Skipped on the lowest FX tier; uses the world accents.
+  if (glowFX(10) > 3) {
+    const span = H * 1.6;
+    const cn = wld.node || '#2ff3e0';
+    const cv = wld.void || '#ff3b5c';
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const nb of NEBULA) {
+      const yy = (((nb.y * span + cam * nb.d) % span) + span) % span - H * 0.3;
+      const cx = nb.x * W;
+      const g = ctx.createRadialGradient(cx, yy, 0, cx, yy, nb.r);
+      g.addColorStop(0, hexA(nb.c ? cv : cn, nb.a));
+      g.addColorStop(1, hexA(nb.c ? cv : cn, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(cx - nb.r, yy - nb.r, nb.r * 2, nb.r * 2);
+    }
+    ctx.restore();
+  }
+
   ctx.fillStyle = '#aab8ff';
   for (const st of STARS) {
     const yy = (((st.y * H + cam * st.d) % H) + H) % H;
@@ -343,7 +387,9 @@ function drawTrajectory(): void {
   let vx = tx * LAUNCH;
   let vy = ty * LAUNCH;
   const h = 1 / 60;
-  const steps = 46;
+  // A short HINT of the arc, not a whip across the screen: fewer steps and a
+  // quicker alpha falloff so it suggests the launch direction and fades out.
+  const steps = 26;
   ctx.save();
   ctx.fillStyle = sk.c;
   for (let i = 0; i < steps; i++) {
@@ -358,10 +404,12 @@ function drawTrajectory(): void {
       if (n === pl.node) continue;
       if (Math.hypot(x - n.wx, y - n.wy) < n.r + pl.r + CATCH_PAD) { hitN = true; break; }
     }
-    if (i % 3 === 0) {
-      ctx.globalAlpha = clamp(1 - i / steps, 0, 0.5);
+    if (i % 2 === 0) {
+      // fade fast (squared falloff) and shrink the dots along the arc
+      const f = clamp(1 - i / steps, 0, 1);
+      ctx.globalAlpha = f * f * 0.55;
       ctx.beginPath();
-      ctx.arc(x, sY(y), 2.2, 0, TAU);
+      ctx.arc(x, sY(y), 1.4 + f * 1.4, 0, TAU);
       ctx.fill();
     }
     if ((hitN && i > 2) || y < G.voidY) break;
@@ -369,26 +417,74 @@ function drawTrajectory(): void {
   ctx.restore();
 }
 
+/* The rising "lava" void: a churning, wavy molten surface with a hot glowing
+   crest and rising embers, instead of a flat line. Animated off G.t; ember count
+   + churn scale down with the FX level so low-end stays smooth. */
 function drawVoid(): void {
   const { ctx, W, H } = view;
-  const vy = sY(state.G.voidY);
+  const G = state.G;
+  const vy = sY(G.voidY);
   const vc = world().void || '#ff3b5c';
-  if (vy < H + 40) {
-    const grad = ctx.createLinearGradient(0, vy - 50, 0, H);
-    grad.addColorStop(0, hexA(vc, 0));
-    grad.addColorStop(0.4, hexA(vc, 0.25));
-    grad.addColorStop(1, hexA(vc, 0.9));
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, vy - 50, W, H - (vy - 50) + 50);
-    ctx.strokeStyle = vc;
-    ctx.lineWidth = 3;
+  if (vy >= H + 40) return;
+  const t = G.t;
+  // wavy surface y at a given x
+  const surf = (x: number): number =>
+    vy + Math.sin(x * 0.021 + t * 1.6) * 6 + Math.sin(x * 0.052 - t * 2.4) * 3.2;
+
+  // molten body — filled under the wave with a depth gradient
+  const grad = ctx.createLinearGradient(0, vy - 54, 0, H);
+  grad.addColorStop(0, hexA(vc, 0));
+  grad.addColorStop(0.35, hexA(vc, 0.28));
+  grad.addColorStop(1, hexA(vc, 0.92));
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  ctx.lineTo(0, surf(0));
+  for (let x = 0; x <= W; x += 14) ctx.lineTo(x, surf(x));
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // hot crest — a bright molten line riding the wave
+  ctx.beginPath();
+  ctx.moveTo(0, surf(0));
+  for (let x = 0; x <= W; x += 14) ctx.lineTo(x, surf(x));
+  ctx.strokeStyle = vc;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = vc;
+  ctx.shadowBlur = glowFX(20);
+  ctx.stroke();
+  // inner white-hot highlight
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.2;
+  ctx.shadowBlur = glowFX(8);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // rising embers — procedural (no pool); skipped on the lowest FX tier
+  const emberN = pcount(14);
+  if (emberN > 0 && glowFX(10) > 3) {
+    ctx.save();
+    ctx.fillStyle = '#ffd9a0';
     ctx.shadowColor = vc;
-    ctx.shadowBlur = glowFX(18);
-    ctx.beginPath();
-    ctx.moveTo(0, vy);
-    ctx.lineTo(W, vy);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur = glowFX(8);
+    for (let i = 0; i < emberN; i++) {
+      const ex = ((i * 137.5) % W);
+      const ph = (t * (0.4 + (i % 5) * 0.05) + i * 0.37) % 1;
+      const ey = surf(ex) - ph * 70;
+      const a = (1 - ph) * 0.7;
+      if (a <= 0.02) continue;
+      ctx.globalAlpha = a;
+      const r = (1 - ph) * 2.2 + 0.6;
+      ctx.beginPath();
+      ctx.arc(ex + Math.sin(t * 2 + i) * 4, ey, r, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 }
 
@@ -700,20 +796,36 @@ export function renderPlay(): void {
     if (s.got) continue;
     const y = sY(s.wy);
     if (y < -20 || y > H + 20) continue;
-    const shield = s.kind === 'shield';
-    const col = shield ? '#9ffff2' : '#ffe39b';
+    const col = s.kind === 'shield' ? '#9ffff2'
+      : s.kind === 'focus' ? '#cdb4ff'
+      : s.kind === 'magnet' ? '#a9ecff'
+      : '#ffe39b';
     ctx.save();
     ctx.fillStyle = col;
+    ctx.strokeStyle = col;
     ctx.shadowColor = col;
     ctx.shadowBlur = glowFX(12);
     ctx.translate(s.wx, y);
-    ctx.rotate(G.t * 3);
-    if (shield) {
+    if (s.kind === 'shield') {
+      ctx.rotate(G.t * 3);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = col;
       ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.stroke();
       ctx.beginPath(); ctx.arc(0, 0, 3, 0, TAU); ctx.fill();
+    } else if (s.kind === 'focus') {
+      // crosshair-in-ring — "precision / slow time"
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.stroke();
+      const p = 0.5 + 0.5 * Math.sin(G.t * 5);
+      ctx.beginPath(); ctx.arc(0, 0, 2.2 + p * 1.5, 0, TAU); ctx.fill();
+    } else if (s.kind === 'magnet') {
+      // horseshoe magnet glyph
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, 6, Math.PI * 0.15, Math.PI * 0.85, true); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5.4, 2.6); ctx.lineTo(-5.4, 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5.4, 2.6); ctx.lineTo(5.4, 6); ctx.stroke();
     } else {
+      ctx.rotate(G.t * 3);
       ctx.beginPath();
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * TAU;
@@ -727,11 +839,39 @@ export function renderPlay(): void {
   }
   drawGate();
   drawTrajectory();
+  // MAGNET aura — a faint pulsing ring + reach indicator while active.
+  if (G.magnetT > 0) {
+    const px = G.player.wx;
+    const py = sY(G.player.wy);
+    const pulse = 0.5 + 0.5 * Math.sin(G.t * 5);
+    ctx.save();
+    ctx.globalAlpha = (0.12 + pulse * 0.12) * (G.magnetT < 1 ? G.magnetT : 1);
+    ctx.strokeStyle = '#a9ecff';
+    ctx.shadowColor = '#a9ecff';
+    ctx.shadowBlur = glowFX(10);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, 34 + pulse * 8, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
   drawPlayer();
   drawTutorialHand();
   Pop.draw();
   fxDrawWorld();
   drawComboFlash();
+
+  // FOCUS — a calm slow-motion wash so the slowdown reads clearly.
+  if (G.focusT > 0) {
+    const a = clamp(G.focusT, 0, 1) * 0.5;
+    ctx.save();
+    const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.18, W / 2, H / 2, H * 0.8);
+    grad.addColorStop(0, 'rgba(167,107,255,0)');
+    grad.addColorStop(1, hexA('#a76bff', a * 0.55 * fx.motion));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
 
   const closeness = clamp(1 - (G.player.wy - G.voidY) / 240, 0, 1);
   if (closeness > 0.05) {
@@ -751,6 +891,35 @@ export function renderPlay(): void {
   if (G.combo > 1) text('PERFECT x' + G.combo, W / 2, 72 + SAFE_TOP, 15, '#ffb020', 700, 8);
   text('◎ ' + (Profile.coins + G.coins), W - 16, 28 + SAFE_TOP, 14, '#ffe39b', 700, 6, 'right');
   drawMeters();
+
+  // active power-up timers (left edge, under the toggles' space)
+  let puY = 92 + SAFE_TOP;
+  const puBar = (label: string, t: number, max: number, c: string): void => {
+    const w = 70;
+    const x = 12;
+    text(label, x, puY, 9, c, 800, 0, 'left', "'Unbounded'");
+    rr(x, puY + 6, w, 4, 2); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
+    rr(x, puY + 6, w * clamp(t / max, 0, 1), 4, 2); ctx.fillStyle = c; ctx.fill();
+    puY += 18;
+  };
+  if (G.focusT > 0) puBar('FOCUS', G.focusT, 3.2, '#cdb4ff');
+  if (G.magnetT > 0) puBar('MAGNET', G.magnetT, 6.5, '#a9ecff');
+
+  // ZEN: no death, so offer an explicit "DONE" button to bank the session.
+  if (G.zen) {
+    const bw = 78;
+    const bh = 30;
+    const bx = W - bw - 12;
+    const by = 50 + SAFE_TOP;
+    rr(bx, by, bw, bh, 9);
+    ctx.fillStyle = 'rgba(20,16,48,.78)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(149,227,90,.5)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    text('✦ DONE', bx + bw / 2, by + bh / 2, 12, '#9be35a', 800, 0, 'center', "'Unbounded'");
+    btn('zenexit', bx, by, bw, bh, () => onZenExit());
+  }
 
   if (G.tut >= 0) {
     ctx.globalAlpha = clamp(1 - (G.tutT - 3) / 1.5, 0, 1);

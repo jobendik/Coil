@@ -179,6 +179,7 @@ export const Result = {
 
   header(): [string, string] {
     const d = this.d;
+    if (d.zen) return ['ZEN SESSION', '#9be35a'];
     if (d.potWon > 0) return ['VAULT WON!', '#ffd24a'];
     if (d.daily) {
       if (d.dailyMedals.length) return [d.dailyMedals[d.dailyMedals.length - 1].name + ' MEDAL!', '#ffd24a'];
@@ -299,7 +300,8 @@ export const Result = {
         W / 2, by + (d.leveledUp ? 26 : 4), 14, '#9be35a', 700, 8);
     }
     const G = state.G;
-    const canRevive = !G.revivedThisRun;
+    // Zen has no death, so there's nothing to revive from — only offer DOUBLE COINS.
+    const canRevive = !G.revivedThisRun && !d.zen;
     // After revive is used, the prominent rewarded slot offers DOUBLE COINS instead.
     const canDouble = !canRevive && !this.doubled && d.coins > 0;
     const hasTopCTA = canRevive || canDouble;
@@ -357,7 +359,7 @@ export const Result = {
         ctx.fill();
         ctx.shadowBlur = 0;
       }
-      text(d.daily ? 'DAILY AGAIN' : 'PLAY AGAIN', W / 2, py + ph / 2,
+      text(d.zen ? 'ZEN AGAIN' : d.daily ? 'DAILY AGAIN' : 'PLAY AGAIN', W / 2, py + ph / 2,
         hasTopCTA ? 17 : 20, hasTopCTA ? '#eaf6ff' : '#04030a', 800, 0, 'center', "'Unbounded'");
       btn('replay', px, py, pw, ph, () => onReplayRequested());
       py += ph + 12;

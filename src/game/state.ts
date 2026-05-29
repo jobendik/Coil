@@ -14,7 +14,7 @@ export const state = {
   G: null as unknown as GameState,
 };
 
-export function resetRun(daily = false): void {
+export function resetRun(daily = false, zen = false): void {
   const { W, H } = view;
   // Daily Challenge: seed the route generator so every player gets the same
   // layout today. Normal runs use live randomness.
@@ -62,6 +62,9 @@ export function resetRun(daily = false): void {
     firstRunOfDay: firstOfDay,
     coinMult: firstOfDay ? 2 : 1,
     daily,
+    zen,
+    focusT: 0,
+    magnetT: 0,
     overdrive: 0,
     frenzyT: 0,
     frenzyMax: FRENZY_TIME,
