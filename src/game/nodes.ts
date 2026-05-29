@@ -41,19 +41,29 @@ export function genNode(): void {
   let type: NodeType = 'normal';
   let r = 18;
 
-  // NOTE: 'move' nodes are intentionally NOT generated. A moving target drifts during the
-  // ~0.4s flight, so the gate (which aims at the target's position at release) cannot stay
-  // truthful without lead-prediction. Until that exists, we keep every gate honest by using
-  // only static targets. The move-node update/recompute code below is left dormant so moving
-  // nodes can be re-enabled later if a predictive gate is added.
+  // 'move' nodes ARE now generated: arcMinApproach lead-predicts the target's
+  // future position (see physics.ts), so the gate aims where the node WILL be
+  // and stays honest. Motion is kept gentle (modest amp/speed) so the ~30 Hz
+  // gate-recompute lag during flight is negligible vs the honesty buffer — the
+  // gate-honesty test verifies this across phases + a recompute time-skew.
+  let mvAmp = 0;
+  let mvSpd = 0;
+  let mvPh = 0;
   if (!easy) {
     const roll = rnd();
     if (hm > 140 && roll < 0.12 + diff * 0.10) {
       type = 'small';
       r = 13;
+    } else if (hm > 180 && roll < 0.12 + 0.18 + diff * 0.06) {
+      // moving node — gentle horizontal drift introduced after the player is
+      // comfortable. amp/spd scale slightly with difficulty but stay bounded.
+      type = 'move';
+      mvAmp = lerp(20, 34, diff);
+      mvSpd = lerp(0.7, 1.05, diff);
+      mvPh = rrand(0, TAU);
     }
   }
-  if (!easy && hm > 150 && rnd() < 0.05) {
+  if (!easy && type === 'normal' && hm > 150 && rnd() < 0.05) {
     type = 'bonus';
     r = 19;
   }
@@ -62,6 +72,10 @@ export function genNode(): void {
   // to here is comfortably hittable for EITHER arrival direction; if not, pull this node
   // toward straight-up over prev (which always widens the window). Easy jumps are always
   // fair, so we skip the (more expensive) check for them. Uses base positions.
+  // For a moving node, keep the full horizontal swing on-screen by clamping the
+  // CENTRE (baseX) with the amplitude as margin.
+  if (type === 'move') nx = clamp(nx, 52 + mvAmp, W - 52 - mvAmp);
+
   if (prev && !easy) {
     const pbx = prev.type === 'move' ? prev.baseX : prev.wx;
     const MIN_FAIR = 0.30;
@@ -73,7 +87,12 @@ export function genNode(): void {
     let by = ny;
     let tries = 0;
     while (tries < 6) {
-      const cand: Node = { wx: cw, wy: cy, r, type: 'normal', baseX: cw, next: null };
+      // Mirror the real node's motion in the fairness candidate so gateWidth
+      // samples the worst arrival phase for moving targets.
+      const cand: Node = {
+        wx: cw, wy: cy, r, type, baseX: cw, next: null,
+        amp: mvAmp, spd: mvSpd || 1, ph: mvPh,
+      };
       const w = Math.min(gateWidth(pivot, cand, 1), gateWidth(pivot, cand, -1));
       if (w > bestW) {
         bestW = w;
@@ -89,17 +108,15 @@ export function genNode(): void {
       bw = pbx;
       by = prev.wy + 110;
     } // last resort: straight up, modest gap — always fair
-    nx = clamp(bw, 52, W - 52);
+    nx = clamp(bw, 52 + (type === 'move' ? mvAmp : 0), W - 52 - (type === 'move' ? mvAmp : 0));
     ny = by;
   }
 
   const node: Node = {
     wx: nx, wy: ny, r, type, baseX: nx, next: null,
-    // amp: dormant — 'move' nodes are not generated (see note above); kept zero
-    // so the moving-node update code in update.ts remains a no-op if re-enabled.
-    amp: 0,
-    ph: rrand(0, TAU),
-    spd: rrand(0.7, 1.2),
+    amp: mvAmp,
+    ph: mvPh,
+    spd: mvSpd || rrand(0.7, 1.2),
     pulse: rrand(0, TAU),
   };
   if (prev) prev.next = node;

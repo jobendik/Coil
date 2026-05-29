@@ -110,6 +110,28 @@ function drawNode(n: import('../types').Node): void {
   ctx.arc(x - pr * 0.3, y - pr * 0.3, pr * 0.28, 0, TAU);
   ctx.fill();
   ctx.restore();
+
+  // MOVING node: small drift chevrons pointing the way it's currently sliding,
+  // so the "this one moves" grammar reads instantly without being noisy.
+  if (n.type === 'move' && (n.amp ?? 0) > 0) {
+    const vel = Math.cos(state.G.t * (n.spd ?? 1) + (n.ph ?? 0)); // sign = drift dir
+    const d = vel >= 0 ? 1 : -1;
+    const ax = x + d * (pr + 7);
+    ctx.save();
+    ctx.globalAlpha = 0.35 + Math.abs(vel) * 0.4;
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 2; k++) {
+      const cxx = ax + d * k * 5;
+      ctx.beginPath();
+      ctx.moveTo(cxx - d * 2, y - 4);
+      ctx.lineTo(cxx + d * 2, y);
+      ctx.lineTo(cxx - d * 2, y + 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 /* the glowing gate: safe band (dim) + perfect band (bright), drawn on the orbit */
