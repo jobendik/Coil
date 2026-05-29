@@ -237,9 +237,13 @@ document.addEventListener('visibilitychange', () => {
   paused = document.hidden;
   if (paused) {
     Music.pause();
+    // Tabbing away mid-run pauses gameplay — tell CrazyGames so its ad/engagement
+    // timing stays accurate (no-op off-platform, and only while actually playing).
+    if (state.scene === 'play') CG.gameplayStop();
   } else {
     last = performance.now();
     acc = 0;          // Music resumes via its per-frame fade
+    if (state.scene === 'play') CG.gameplayStart();
   }
 });
 
