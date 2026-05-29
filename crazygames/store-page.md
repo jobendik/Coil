@@ -8,6 +8,11 @@ outside the build. This doc is the launch spec for the dashboard fields.
 > One-line positioning: **a tiny cosmic creature you fling between glowing gates to
 > climb an endless void — one perfect tap at a time.**
 
+> **Competitive note:** the similar game **Sticky Orbit** (May 2026, ~720 rates, 8.9/10)
+> proves the niche but isn't entrenched. Position COIL *away* from its "orbit
+> planets / outrun the sun" framing — lead with **creature collection + perfect tap**.
+> Full read in `positioning.md`; thumbnail prompts in `asset-prompts.md`.
+
 ---
 
 ## 1. Title
@@ -16,11 +21,12 @@ Primary: **COIL**
 
 Because "COIL" alone is short and abstract, pair it with a clarifying subtitle in the
 **description's first line** (CrazyGames shows the title small; the subtitle does the
-explaining):
+explaining). Deliberately avoid the word "orbit" so we don't read as a Sticky Orbit
+clone:
 
 - `COIL — One-Tap Cosmic Climber`
 - alt: `COIL: Fling & Climb`
-- alt: `COIL — Tap, Fling, Climb`
+- alt: `COIL — Catch the Glow, Climb the Void`
 
 Keep the dashboard **Game title** as `COIL` (brandable, searchable once it ranks);
 put the descriptor in the description/preview text, not the title field.
@@ -32,8 +38,10 @@ put the descriptor in the description/preview text, not the title field.
 CrazyGames thumbnails are shown small, in a dense grid, often on mobile. Optimize for
 **instant readability at ~256 px and strong colour contrast against a dark grid.**
 
+**→ Ready-to-paste generation prompts for all 3 variants live in `asset-prompts.md`.**
+
 Specs (follow the dashboard's current export sizes; design at 2×):
-- Aspect: **16:9** primary (e.g. 800×450 or higher), plus a **square 1:1** crop for
+- Aspect: **16:9** primary (e.g. 1600×900), plus a **square 1:1** crop for
   mobile placements. Design so the focal point survives a centre-square crop.
 - Safe area: keep the hero element centred; assume edges get cropped.
 
