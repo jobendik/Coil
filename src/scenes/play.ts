@@ -11,6 +11,13 @@ import { settings, setAimPreview, setMuted, setMusicMuted, setReducedMotion } fr
 import { rr } from '../core/utils';
 import { CATCH_PAD, DAILY_MEDALS, G_FALL, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
 
+// Injected by main.ts so the Zen "DONE" button can bank the run without play.ts
+// importing the game-loop module (avoids a scene↔loop import cycle).
+let onZenExit: () => void = () => { /* injected by main.ts */ };
+export function setZenExitHandler(fn: () => void): void {
+  onZenExit = fn;
+}
+
 /* ---------- starfield (one per session) ---------- */
 const STARS = (() => {
   const arr: Array<{ x: number; y: number; d: number; s: number; a: number }> = [];
@@ -700,20 +707,36 @@ export function renderPlay(): void {
     if (s.got) continue;
     const y = sY(s.wy);
     if (y < -20 || y > H + 20) continue;
-    const shield = s.kind === 'shield';
-    const col = shield ? '#9ffff2' : '#ffe39b';
+    const col = s.kind === 'shield' ? '#9ffff2'
+      : s.kind === 'focus' ? '#cdb4ff'
+      : s.kind === 'magnet' ? '#a9ecff'
+      : '#ffe39b';
     ctx.save();
     ctx.fillStyle = col;
+    ctx.strokeStyle = col;
     ctx.shadowColor = col;
     ctx.shadowBlur = glowFX(12);
     ctx.translate(s.wx, y);
-    ctx.rotate(G.t * 3);
-    if (shield) {
+    if (s.kind === 'shield') {
+      ctx.rotate(G.t * 3);
       ctx.lineWidth = 2;
-      ctx.strokeStyle = col;
       ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.stroke();
       ctx.beginPath(); ctx.arc(0, 0, 3, 0, TAU); ctx.fill();
+    } else if (s.kind === 'focus') {
+      // crosshair-in-ring — "precision / slow time"
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.stroke();
+      const p = 0.5 + 0.5 * Math.sin(G.t * 5);
+      ctx.beginPath(); ctx.arc(0, 0, 2.2 + p * 1.5, 0, TAU); ctx.fill();
+    } else if (s.kind === 'magnet') {
+      // horseshoe magnet glyph
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, 6, Math.PI * 0.15, Math.PI * 0.85, true); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5.4, 2.6); ctx.lineTo(-5.4, 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5.4, 2.6); ctx.lineTo(5.4, 6); ctx.stroke();
     } else {
+      ctx.rotate(G.t * 3);
       ctx.beginPath();
       for (let i = 0; i < 4; i++) {
         const a = (i / 4) * TAU;
@@ -727,11 +750,39 @@ export function renderPlay(): void {
   }
   drawGate();
   drawTrajectory();
+  // MAGNET aura — a faint pulsing ring + reach indicator while active.
+  if (G.magnetT > 0) {
+    const px = G.player.wx;
+    const py = sY(G.player.wy);
+    const pulse = 0.5 + 0.5 * Math.sin(G.t * 5);
+    ctx.save();
+    ctx.globalAlpha = (0.12 + pulse * 0.12) * (G.magnetT < 1 ? G.magnetT : 1);
+    ctx.strokeStyle = '#a9ecff';
+    ctx.shadowColor = '#a9ecff';
+    ctx.shadowBlur = glowFX(10);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(px, py, 34 + pulse * 8, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
   drawPlayer();
   drawTutorialHand();
   Pop.draw();
   fxDrawWorld();
   drawComboFlash();
+
+  // FOCUS — a calm slow-motion wash so the slowdown reads clearly.
+  if (G.focusT > 0) {
+    const a = clamp(G.focusT, 0, 1) * 0.5;
+    ctx.save();
+    const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.18, W / 2, H / 2, H * 0.8);
+    grad.addColorStop(0, 'rgba(167,107,255,0)');
+    grad.addColorStop(1, hexA('#a76bff', a * 0.55 * fx.motion));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
 
   const closeness = clamp(1 - (G.player.wy - G.voidY) / 240, 0, 1);
   if (closeness > 0.05) {
@@ -751,6 +802,35 @@ export function renderPlay(): void {
   if (G.combo > 1) text('PERFECT x' + G.combo, W / 2, 72 + SAFE_TOP, 15, '#ffb020', 700, 8);
   text('◎ ' + (Profile.coins + G.coins), W - 16, 28 + SAFE_TOP, 14, '#ffe39b', 700, 6, 'right');
   drawMeters();
+
+  // active power-up timers (left edge, under the toggles' space)
+  let puY = 92 + SAFE_TOP;
+  const puBar = (label: string, t: number, max: number, c: string): void => {
+    const w = 70;
+    const x = 12;
+    text(label, x, puY, 9, c, 800, 0, 'left', "'Unbounded'");
+    rr(x, puY + 6, w, 4, 2); ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fill();
+    rr(x, puY + 6, w * clamp(t / max, 0, 1), 4, 2); ctx.fillStyle = c; ctx.fill();
+    puY += 18;
+  };
+  if (G.focusT > 0) puBar('FOCUS', G.focusT, 3.2, '#cdb4ff');
+  if (G.magnetT > 0) puBar('MAGNET', G.magnetT, 6.5, '#a9ecff');
+
+  // ZEN: no death, so offer an explicit "DONE" button to bank the session.
+  if (G.zen) {
+    const bw = 78;
+    const bh = 30;
+    const bx = W - bw - 12;
+    const by = 50 + SAFE_TOP;
+    rr(bx, by, bw, bh, 9);
+    ctx.fillStyle = 'rgba(20,16,48,.78)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(149,227,90,.5)';
+    ctx.lineWidth = 1.4;
+    ctx.stroke();
+    text('✦ DONE', bx + bw / 2, by + bh / 2, 12, '#9be35a', 800, 0, 'center', "'Unbounded'");
+    btn('zenexit', bx, by, bw, bh, () => onZenExit());
+  }
 
   if (G.tut >= 0) {
     ctx.globalAlpha = clamp(1 - (G.tutT - 3) / 1.5, 0, 1);

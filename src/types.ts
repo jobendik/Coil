@@ -15,7 +15,7 @@ export interface Node {
   pulse?: number;
 }
 
-export type SparkKind = 'spark' | 'shield';
+export type SparkKind = 'spark' | 'shield' | 'focus' | 'magnet';
 
 export interface Spark {
   wx: number;
@@ -104,6 +104,9 @@ export interface GameState {
   coinMult: number;               // current coin multiplier (1 or 2)
   // ---- meta-layer (cosmetic / reward systems on top of the skill loop) ----
   daily: boolean;                 // this run is the seeded Daily Challenge
+  zen: boolean;                   // Zen mode: can't die — falling bounces you back up
+  focusT: number;                 // FOCUS slow-motion time remaining (s); 0 = inactive
+  magnetT: number;                // MAGNET coin-attraction time remaining (s); 0 = inactive
   overdrive: number;              // 0..1 meter; fills with perfects → triggers FRENZY at full
   frenzyT: number;                // FRENZY mode time remaining (s); 0 = inactive
   frenzyMax: number;              // FRENZY duration (s) for the countdown bar
@@ -254,6 +257,7 @@ export interface ResultData {
   potWon: number;          // Star Vault coins won this run (0 if none)
   achievements: Achievement[];  // achievements newly unlocked this run
   daily: boolean;          // was this the Daily Challenge route
+  zen: boolean;            // was this a Zen (no-fail) session
   dailyMedals: DailyMedal[];    // medals freshly earned on this daily run
   claimedUnlocks: string[];     // names of cosmetics earned for free this run (skill-gated)
 }

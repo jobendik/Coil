@@ -2,11 +2,11 @@ import './style.css';
 
 import { initCanvas, resize, view } from './core/canvas';
 import { state, resetRun, maybeShowStartToast } from './game/state';
-import { update, release, requestRevive } from './game/update';
+import { update, release, requestRevive, endRun } from './game/update';
 import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
-import { renderHome, setPlayHandler, setDailyHandler } from './scenes/home';
-import { renderPlay } from './scenes/play';
+import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
+import { renderPlay, setZenExitHandler } from './scenes/play';
 import { renderShop } from './scenes/shop';
 import { ac } from './core/audio';
 import { Music } from './core/music';
@@ -33,8 +33,8 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 80));
 /* ---------- play / replay / revive flow ---------- */
 let paused = false;
 
-function startPlay(daily = false): void {
-  resetRun(daily);
+function startPlay(daily = false, zen = false): void {
+  resetRun(daily, zen);
   maybeShowStartToast();
   Telemetry.runStart(daily);
   state.scene = 'play';
@@ -51,13 +51,14 @@ const AD_MIN_GAP_MS = 180_000;        // ≥3 min between interstitials
 const AD_FIRST_DELAY_MS = 150_000;    // no interstitial in the opening minutes
 let lastInterstitialT = performance.now() - (AD_MIN_GAP_MS - AD_FIRST_DELAY_MS);
 
-function requestReplay(daily = false): void {
+function requestReplay(daily = false, zen = false): void {
   const now = performance.now();
-  if (CG.ready && now - lastInterstitialT >= AD_MIN_GAP_MS) {
+  // Never gate Zen (the calm mode) with an interstitial — it would break the vibe.
+  if (!zen && CG.ready && now - lastInterstitialT >= AD_MIN_GAP_MS) {
     lastInterstitialT = now;
-    CG.midgame(() => startPlay(daily));
+    CG.midgame(() => startPlay(daily, zen));
   } else {
-    startPlay(daily);
+    startPlay(daily, zen);
   }
 }
 
@@ -65,8 +66,12 @@ function requestReplay(daily = false): void {
 setPlayHandler(() => startPlay(false));
 // Home DAILY → the seeded Daily Challenge.
 setDailyHandler(() => startPlay(true));
-// Result PLAY AGAIN → replay the SAME mode (daily stays daily), ad-gated.
-setReplayHandler(() => requestReplay(state.G?.daily ?? false));
+// Home ZEN → the unkillable calm mode.
+setZenHandler(() => startPlay(false, true));
+// Zen DONE (in-play) → bank the session like a normal run end.
+setZenExitHandler(() => endRun());
+// Result PLAY AGAIN → replay the SAME mode (daily/zen preserved), ad-gated.
+setReplayHandler(() => requestReplay(state.G?.daily ?? false, state.G?.zen ?? false));
 setReviveHandler(requestRevive);
 
 // Ad lifecycle pauses the game loop so updates don't run behind the overlay.
@@ -113,6 +118,9 @@ function onDown(e: PointerEvent): void {
     hitButtons(x, y);
     return;
   }
+  // Zen mode has no death, so it needs an explicit "end session" button in play.
+  // Let that button win the tap; any other tap is a normal release.
+  if (state.G.zen && hitButtons(x, y)) return;
   if (!state.G.dead) release();
 }
 
@@ -159,7 +167,16 @@ function frame(now: number): void {
   resetButtons();
 
   if (state.scene === 'play') {
-    acc += dt;
+    // FOCUS power-up = a brief, uniform slow-motion. We feed the fixed-step
+    // accumulator a scaled clock so EVERYTHING (orbit, flight, void, animation)
+    // slows together; the timer itself counts down in real time so it ends when
+    // expected. The fixed timestep is preserved → physics stay deterministic.
+    let ts = 1;
+    if (state.G && state.G.focusT > 0) {
+      state.G.focusT = Math.max(0, state.G.focusT - dt);
+      ts = 0.55;
+    }
+    acc += dt * ts;
     let steps = 0;
     while (acc >= FIXED && steps < MAX_STEPS) {
       update(FIXED);
