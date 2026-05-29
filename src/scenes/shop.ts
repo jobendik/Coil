@@ -7,8 +7,8 @@ import {
   equipTrail, equipWorld, ownTrail, ownWorld,
 } from '../game/collection';
 import { Store } from '../core/store';
-import { Confetti, Coins, Rays } from '../core/fx';
-import { TAU, glowFX, hexA, rr, text } from '../core/utils';
+import { Confetti, Rays, Shock, Sparkles } from '../core/fx';
+import { TAU, clamp, glowFX, hexA, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { SFX } from '../core/audio';
 import { drawBG, dimVoid } from './play';
@@ -23,6 +23,19 @@ const TABS: Array<[Tab, string]> = [
   ['trails', 'TRAILS'],
   ['worlds', 'WORLDS'],
 ];
+
+/* ---------- rarity ladder ----------
+   Derived from price so the catalogue reads like a real collectible game.
+   Drives the card accent, the corner gem, and the small tier label — replaces
+   the old flavour tags ("Spooky"/"Zippy") that read as childish. */
+interface Rarity { name: string; c: string; }
+function rarityOf(price: number): Rarity {
+  if (price <= 0) return { name: 'STARTER', c: '#8fa0c8' };
+  if (price < 400) return { name: 'UNCOMMON', c: '#5fe0a0' };
+  if (price < 800) return { name: 'RARE', c: '#5bb8ff' };
+  if (price < 1500) return { name: 'EPIC', c: '#c08bff' };
+  return { name: 'LEGENDARY', c: '#ffd24a' };
+}
 
 function ownedFor(tab: Tab): string[] {
   return tab === 'trails' ? OwnedTrails : tab === 'worlds' ? OwnedWorlds : Owned;
@@ -49,21 +62,74 @@ function buy(tab: Tab, item: Skin | Trail | World): void {
   else if (tab === 'worlds') { ownWorld(item.id); equipWorld(item.id); }
   else { ownSkin(item.id); equipSkin(item.id); }
   SFX.unlock();
+  // Unlock moment is a clean "reveal", not a coin party — the player just SPENT
+  // coins, so a fountain of them reads wrong. A rarity-tinted shock + a few rays
+  // + sparkles feels premium and earned.
   const { W, H } = view;
-  Confetti.burst(W / 2, H * 0.4, 32);
-  Coins.spawn(W / 2, H * 0.4, 12, { fountain: true, up: 80 });
-  Rays.burst(W / 2, H * 0.4, accent(tab, item), 16);
+  const acol = accent(tab, item);
+  Shock.ring(W / 2, H * 0.42, acol, { r0: 18, r1: Math.max(W, H) * 0.7, lw: 5, life: 0.6 });
+  Rays.burst(W / 2, H * 0.42, acol, 14);
+  Sparkles.scatter(16, acol);
+  Confetti.burst(W / 2, H * 0.42, 18);
 }
 
 /* ---------- previews ---------- */
 function drawCharPreview(x: number, y: number, r: number, s: Skin, owned: boolean): void {
   const { ctx } = view;
   ctx.save();
-  if (owned) { ctx.fillStyle = s.c; ctx.shadowColor = s.c; ctx.shadowBlur = glowFX(16); } else { ctx.fillStyle = '#2a2550'; }
+  if (owned) {
+    // soft halo so the orb reads as a glowing creature, not a flat dot
+    ctx.fillStyle = s.c;
+    ctx.shadowColor = s.c;
+    ctx.shadowBlur = glowFX(18);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // specular highlight
+    ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.beginPath();
+    ctx.arc(x - r * 0.32, y - r * 0.34, r * 0.26, 0, TAU);
+    ctx.fill();
+    // little face — gives every character an identity (design goal)
+    for (const o of [-1, 1]) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(x + o * r * 0.34, y - r * 0.02, r * 0.2, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#0a0720';
+      ctx.beginPath();
+      ctx.arc(x + o * r * 0.34, y + r * 0.02, r * 0.1, 0, TAU);
+      ctx.fill();
+    }
+  } else {
+    // locked silhouette + padlock
+    ctx.fillStyle = 'rgba(255,255,255,.05)';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.16)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    drawLock(x, y, '#7e88b5');
+  }
+  ctx.restore();
+}
+
+function drawLock(cx: number, cy: number, col: string): void {
+  const { ctx } = view;
+  ctx.save();
+  ctx.strokeStyle = col;
+  ctx.fillStyle = col;
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  // shackle
   ctx.beginPath();
-  ctx.arc(x, y, r, 0, TAU);
+  ctx.arc(cx, cy - 3, 4, Math.PI, 0);
+  ctx.stroke();
+  // body
+  rr(cx - 5.5, cy - 1, 11, 9, 2);
   ctx.fill();
-  if (owned) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, r * 0.38, 0, TAU); ctx.fill(); }
   ctx.restore();
 }
 
@@ -145,35 +211,97 @@ function drawWorldPreview(x: number, y: number, w: number, h: number, item: Worl
   ctx.restore();
 }
 
+/* small rarity gem in the card corner */
+function drawGem(cx: number, cy: number, r: number, col: string): void {
+  const { ctx } = view;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = col;
+  ctx.shadowColor = col;
+  ctx.shadowBlur = glowFX(6);
+  rr(-r, -r, r * 2, r * 2, 1.5);
+  ctx.fill();
+  ctx.restore();
+}
+
+/* coin-balance pill, centered under the title */
+function drawCoinPill(cx: number, cy: number): void {
+  const { ctx } = view;
+  const label = Profile.coins.toLocaleString();
+  ctx.save();
+  ctx.font = "700 15px 'Sora', sans-serif";
+  const tw = ctx.measureText(label).width;
+  const pad = 16;
+  const cr = 7;
+  const pw = pad + cr * 2 + 7 + tw + pad;
+  const ph = 30;
+  const px = cx - pw / 2;
+  const py = cy - ph / 2;
+  rr(px, py, pw, ph, ph / 2);
+  ctx.fillStyle = 'rgba(20,16,48,.72)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,210,74,.30)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // gold coin glyph
+  const coinX = px + pad + cr;
+  ctx.fillStyle = '#ffcf3a';
+  ctx.shadowColor = '#ffb020';
+  ctx.shadowBlur = glowFX(6);
+  ctx.beginPath();
+  ctx.arc(coinX, cy, cr, 0, TAU);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff3b0';
+  ctx.beginPath();
+  ctx.arc(coinX - cr * 0.25, cy - cr * 0.25, cr * 0.45, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+  text(label, coinX + cr + 7, cy, 15, '#ffe39b', 700, 0, 'left');
+}
+
 export function renderShop(): void {
   const { ctx, W, H, SAFE_TOP } = view;
   drawBG();
-  dimVoid(0.55);
+  dimVoid(0.62);
   const sk = skin();
-  text('COLLECTION', W / 2, 42 + SAFE_TOP, 25, '#fff', 800, 14, 'center', "'Unbounded'");
-  text('◎ ' + Profile.coins, W / 2, 72 + SAFE_TOP, 16, '#ffe39b', 700, 6);
 
-  // tabs
-  const tx = 16;
-  const ty = 92 + SAFE_TOP;
-  const tw = (W - 32 - 16) / 3;
-  const th = 34;
+  // ---- header ----
+  text('COLLECTION', W / 2, 40 + SAFE_TOP, 24, '#fff', 800, 12, 'center', "'Unbounded'");
+  drawCoinPill(W / 2, 70 + SAFE_TOP);
+
+  // ---- segmented tab control (single track, no neon glow) ----
+  const trackX = 16;
+  const trackY = 92 + SAFE_TOP;
+  const trackW = W - 32;
+  const trackH = 38;
+  rr(trackX, trackY, trackW, trackH, 12);
+  ctx.fillStyle = 'rgba(12,9,30,.7)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.06)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  const segPad = 4;
+  const segW = (trackW - segPad * 2) / 3;
   for (let i = 0; i < TABS.length; i++) {
     const [id, label] = TABS[i];
-    const x = tx + i * (tw + 8);
     const active = shopTab === id;
-    rr(x, ty, tw, th, 10);
-    ctx.fillStyle = active ? hexA(sk.c, 0.26) : 'rgba(20,16,48,.72)';
-    ctx.fill();
-    ctx.strokeStyle = active ? sk.c : 'rgba(255,255,255,.10)';
-    ctx.lineWidth = 1.4;
-    if (active) { ctx.shadowColor = sk.c; ctx.shadowBlur = glowFX(10); }
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    text(label, x + tw / 2, ty + th / 2, 10, active ? '#fff' : '#9fb0e0', 800, active ? 4 : 0, 'center', "'Unbounded'");
-    btn('tab' + id, x, ty, tw, th, () => { shopTab = id; Store.set('coil_shop_tab', id); });
+    const sx = trackX + segPad + i * segW;
+    if (active) {
+      rr(sx, trackY + segPad, segW, trackH - segPad * 2, 9);
+      ctx.fillStyle = hexA(sk.c, 0.18);
+      ctx.fill();
+      ctx.strokeStyle = hexA(sk.c, 0.55);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    text(label, sx + segW / 2, trackY + trackH / 2, 10.5,
+      active ? '#fff' : '#8a93bf', 800, 0, 'center', "'Unbounded'");
+    btn('tab' + id, sx, trackY, segW, trackH, () => { shopTab = id; Store.set('coil_shop_tab', id); });
   }
 
+  // ---- item grid ----
   const list: Array<Skin | Trail | World> = shopTab === 'trails' ? TRAILS : shopTab === 'worlds' ? WORLDS : SKINS;
   const owned = ownedFor(shopTab);
   const eqId = equippedFor(shopTab);
@@ -181,60 +309,110 @@ export function renderShop(): void {
   const gap = 12;
   const mx = 18;
   const cw = (W - mx * 2 - gap) / cols;
-  const ch = 126;
-  const gy = 138 + SAFE_TOP;
+  const ch = 134;
+  const gy = 148 + SAFE_TOP;
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = mx + col * (cw + gap);
     const y = gy + row * (ch + gap);
-    if (y > H - 82) continue;
+    if (y > H - 78) continue;
     const isOwned = owned.includes(item.id);
     const eq = eqId === item.id;
     const can = Profile.coins >= item.price;
     const acol = accent(shopTab, item);
+    const rar = rarityOf(item.price);
+
+    // card: subtle top-lit gradient + hairline border (rarity-tinted)
+    const cg = ctx.createLinearGradient(x, y, x, y + ch);
+    cg.addColorStop(0, 'rgba(30,24,60,.92)');
+    cg.addColorStop(1, 'rgba(12,9,28,.94)');
     rr(x, y, cw, ch, 14);
-    ctx.fillStyle = 'rgba(16,12,38,.9)';
+    ctx.fillStyle = cg;
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = eq ? acol : 'rgba(255,255,255,.08)';
-    if (eq) { ctx.shadowColor = acol; ctx.shadowBlur = glowFX(13); }
+    rr(x, y, cw, ch, 14);
+    ctx.lineWidth = eq ? 2 : 1;
+    ctx.strokeStyle = eq ? acol : isOwned ? hexA(rar.c, 0.4) : 'rgba(255,255,255,.07)';
+    if (eq) { ctx.shadowColor = acol; ctx.shadowBlur = glowFX(12); }
     ctx.stroke();
     ctx.shadowBlur = 0;
+
+    // rarity gem (top-left)
+    drawGem(x + 14, y + 14, 3.5, rar.c);
+    // owned/equipped tick (top-right)
+    if (isOwned) {
+      ctx.save();
+      const tx = x + cw - 14;
+      const ty = y + 14;
+      ctx.strokeStyle = eq ? acol : '#6fe0a0';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tx - 4, ty); ctx.lineTo(tx - 1, ty + 3); ctx.lineTo(tx + 4, ty - 3);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     const pcx = x + cw / 2;
-    const pcy = y + 40;
-    if (shopTab === 'chars') drawCharPreview(pcx, pcy, 16, item as Skin, isOwned);
+    const pcy = y + 44;
+    if (shopTab === 'chars') drawCharPreview(pcx, pcy, 17, item as Skin, isOwned);
     else if (shopTab === 'trails') drawTrailPreview(pcx, pcy, Math.min(72, cw * 0.65), item as Trail);
-    else drawWorldPreview(x + 16, y + 18, cw - 32, 44, item as World);
-    text(item.name, pcx, y + 80, 14, isOwned ? '#fff' : '#8a93bf', 800, 0);
-    text(item.tag || '', pcx, y + 98, 10, '#7e88b5', 600, 0);
+    else drawWorldPreview(x + 16, y + 22, cw - 32, 44, item as World);
+
+    text(item.name, pcx, y + 82, 14, isOwned ? '#fff' : '#c5cef0', 800, 0);
+    text(rar.name, pcx, y + 99, 9, rar.c, 800, 0, 'center', "'Unbounded'");
+
+    // action row
     if (eq) {
-      text('EQUIPPED', pcx, y + 114, 12, acol, 800, 5);
+      text('EQUIPPED', pcx, y + 117, 11, acol, 800, 3);
     } else if (isOwned) {
-      text('EQUIP', pcx, y + 114, 12, '#9fb0e0', 800, 0);
+      text('TAP TO EQUIP', pcx, y + 117, 10.5, '#9fb0e0', 700, 0);
       btn('eq' + shopTab + item.id, x, y, cw, ch, () => equipFor(shopTab, item.id));
     } else {
-      text((can ? 'BUY  ' : '') + item.price + ' ◎', pcx, y + 114, 12, can ? '#ffe39b' : '#5b6488', 800, can ? 5 : 0);
+      // price chip
+      const priceTxt = item.price.toLocaleString();
+      ctx.save();
+      ctx.font = "800 11px 'Sora', sans-serif";
+      const ptw = ctx.measureText(priceTxt).width;
+      const chipW = 12 + 5 + 4 + ptw + 12;
+      const chipX = pcx - chipW / 2;
+      const chipY = y + 108;
+      rr(chipX, chipY, chipW, 19, 9.5);
+      ctx.fillStyle = can ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.05)';
+      ctx.fill();
+      ctx.restore();
+      const dotX = chipX + 12;
+      const dotY = chipY + 9.5;
+      ctx.save();
+      ctx.fillStyle = can ? '#ffcf3a' : '#5b6488';
+      ctx.beginPath();
+      ctx.arc(dotX, dotY, 4, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+      text(priceTxt, dotX + 4 + 5, dotY, 11, can ? '#ffe39b' : '#7e88b5', 800, 0, 'left');
       if (can) btn('buy' + shopTab + item.id, x, y, cw, ch, () => buy(shopTab, item));
     }
   }
 
-  Coins.draw();
-  Confetti.draw();
+  // unlock-moment FX (drawn above the grid)
+  Sparkles.draw();
   Rays.draw();
+  Shock.draw();
+  Confetti.draw();
 
+  // ---- BACK button (refined outline, not a glowing slab) ----
   const bw = W * 0.5;
-  const bh = 48;
+  const bh = 46;
   const bx = W / 2 - bw / 2;
-  const by = H - 66;
-  rr(bx, by, bw, bh, 12);
-  ctx.fillStyle = sk.c;
-  ctx.shadowColor = sk.c;
-  ctx.shadowBlur = 16;
+  const by = H - 64;
+  rr(bx, by, bw, bh, 13);
+  ctx.fillStyle = 'rgba(20,16,48,.8)';
   ctx.fill();
-  ctx.shadowBlur = 0;
-  text('BACK', W / 2, by + bh / 2, 16, '#04030a', 800, 0);
+  ctx.strokeStyle = hexA(sk.c, 0.5);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  text('BACK', W / 2, by + bh / 2, 15, sk.t, 800, 0, 'center', "'Unbounded'");
   btn('back', bx, by, bw, bh, () => {
     state.scene = 'home';
   });
