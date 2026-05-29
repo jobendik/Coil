@@ -14,7 +14,7 @@ import { CG } from './core/cg';
 import { fxUpd } from './core/fx';
 import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
-import { clamp, rand, text } from './core/utils';
+import { rand, text } from './core/utils';
 import { Telemetry } from './core/telemetry';
 import { claimEarnedUnlocks } from './game/unlocks';
 import { DEBUG, DOOM_TIMESCALE } from './config';
@@ -196,14 +196,10 @@ function frame(now: number): void {
   P.upd(dt);
   Pop.upd(dt);
   fxUpd(dt);
-  // Adaptive music: swell with combo + Frenzy during play; Zen swaps in the
-  // ambient bed. Everything settles outside of play.
+  // Zen bed swaps in during calm mode; everything settles outside of play.
   if (state.scene === 'play' && state.G) {
-    const G = state.G;
-    Music.setIntensity(clamp(G.combo / 12, 0, 1) * 0.6 + (G.frenzyT > 0 ? 0.4 : 0));
-    Music.setZen(G.zen);
+    Music.setZen(state.G.zen);
   } else {
-    Music.setIntensity(0);
     Music.setZen(false);
   }
   Music.upd(dt);

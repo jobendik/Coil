@@ -9,13 +9,9 @@ import { clamp } from './utils';
    via Music.pause() from the loop's pause hook. Volume fades in/out so toggles
    and ad breaks aren't jarring.
 
-   Two behaviours layered on top:
-     • ADAPTIVE intensity — the bed swells slightly (and lifts tempo a touch) as
-       the combo climbs and during FRENZY, then settles. Driven by setIntensity()
-       from the game loop.
-     • ZEN bed — in the calm mode the catchy track steps aside for a procedural
-       ambient pad (soft ocean/wind + a low drone), synthesised with WebAudio so
-       it needs no extra asset. Driven by setZen().
+   ZEN bed — in the calm mode the catchy track steps aside for a procedural
+   ambient pad (soft ocean/wind + a low drone), synthesised with WebAudio so
+   it needs no extra asset. Driven by setZen().
 
    Autoplay policy: browsers block audio until a user gesture, so everything is
    created lazily on the first tap/key (Music.start) — never at module load,
@@ -27,7 +23,6 @@ const FADE = 1.8;           // volume units per second
 let el: HTMLAudioElement | null = null;
 let started = false;
 let vol = 0;
-let intensity = 0;          // 0..1 — combo / frenzy energy
 let zen = false;
 
 function ensure(): void {
@@ -130,11 +125,6 @@ export const Music = {
     if (el && !el.paused) el.pause();
   },
 
-  /** Combo/frenzy energy (0..1) → the bed swells + lifts tempo a touch. */
-  setIntensity(x: number): void {
-    intensity = clamp(x, 0, 1);
-  },
-
   /** Toggle the Zen ambient bed (replaces the catchy track in the calm mode). */
   setZen(on: boolean): void {
     zen = on;
@@ -149,11 +139,10 @@ export const Music = {
     if (!started || !el) return;
     // The catchy track plays unless muted, hidden, or we're in the Zen bed.
     const want = allow && !zen;
-    const target = want ? BASE_VOL * (1 + intensity * 0.5) : 0;
+    const target = want ? BASE_VOL : 0;
     vol += (target - vol) * Math.min(1, dt * FADE);
     vol = clamp(vol, 0, 1);
     el.volume = vol;
-    try { el.playbackRate = 1 + intensity * 0.06; } catch { /* ignore */ }
     if (want) {
       if (el.paused) void el.play().catch(() => { /* gesture still pending */ });
     } else if (!el.paused && vol < 0.01) {
