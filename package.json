@@ -7,7 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:cg": "tsc --noEmit && vite build --base=./ --outDir dist-cg",
     "preview": "vite preview",
+    "preview:cg": "vite preview --outDir dist-cg",
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-tests.cjs"
   },

@@ -1,4 +1,4 @@
-export type Scene = 'home' | 'play' | 'over' | 'shop';
+export type Scene = 'home' | 'play' | 'over' | 'shop' | 'evo';
 
 export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike';
 
@@ -169,6 +169,25 @@ export interface World {
   alt: [string, string, string];
   void: string;       // void gradient colour
   node: string;       // normal-node accent
+  tag?: string;
+  req?: UnlockReq;
+}
+
+/** Accessories are a SECOND cosmetic slot worn on top of the character — orbiting
+ *  satellites, glow auras, or headgear. Purely visual; kept small/low-alpha so
+ *  they never obscure the gate. `c`/`t` null → inherit the equipped character's
+ *  colours so any accessory matches any character. */
+export type AccessoryKind = 'none' | 'orbit' | 'aura' | 'crown';
+export interface Accessory {
+  id: string;
+  name: string;
+  price: number;
+  kind: AccessoryKind;
+  c: string | null;
+  t: string | null;
+  count?: number;                                  // orbit: satellite count
+  shape?: 'dot' | 'star' | 'ring' | 'moon';        // orbit: satellite glyph
+  glyph?: 'crown' | 'antenna' | 'visor' | 'halo' | 'soft';  // crown/aura variant
   tag?: string;
   req?: UnlockReq;
 }

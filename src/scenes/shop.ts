@@ -6,6 +6,9 @@ import {
   OwnedTrails, OwnedWorlds, collectionState,
   equipTrail, equipWorld, ownTrail, ownWorld,
 } from '../game/collection';
+import {
+  OwnedAccessories, accessoryState, equipAccessory, ownAccessory,
+} from '../game/accessories';
 import { Store } from '../core/store';
 import { Confetti, Rays, Shock, Sparkles } from '../core/fx';
 import { TAU, clamp, glowFX, hexA, rr, text } from '../core/utils';
@@ -14,16 +17,18 @@ import { SFX } from '../core/audio';
 import { Telemetry } from '../core/telemetry';
 import { reqFraction, reqLabel, reqProgress } from '../game/unlocks';
 import { drawBG, dimVoid } from './play';
-import { SKINS, TRAILS, WORLDS } from '../config';
-import type { Skin, Trail, World } from '../types';
+import { SKINS, TRAILS, WORLDS, ACCESSORIES } from '../config';
+import type { Accessory, Skin, Trail, World } from '../types';
 
-type Tab = 'chars' | 'trails' | 'worlds';
+type Tab = 'chars' | 'trails' | 'worlds' | 'gear';
+type Item = Skin | Trail | World | Accessory;
 let shopTab: Tab = Store.get<Tab>('coil_shop_tab', 'chars');
 
 const TABS: Array<[Tab, string]> = [
-  ['chars', 'CHARACTERS'],
+  ['chars', 'CHARS'],
   ['trails', 'TRAILS'],
   ['worlds', 'WORLDS'],
+  ['gear', 'GEAR'],
 ];
 
 /* ---------- rarity ladder ----------
@@ -40,29 +45,34 @@ function rarityOf(price: number): Rarity {
 }
 
 function ownedFor(tab: Tab): string[] {
-  return tab === 'trails' ? OwnedTrails : tab === 'worlds' ? OwnedWorlds : Owned;
+  return tab === 'trails' ? OwnedTrails : tab === 'worlds' ? OwnedWorlds
+    : tab === 'gear' ? OwnedAccessories : Owned;
 }
 function equippedFor(tab: Tab): string {
-  return tab === 'trails' ? collectionState.trail : tab === 'worlds' ? collectionState.world : skinState.equipped;
+  return tab === 'trails' ? collectionState.trail : tab === 'worlds' ? collectionState.world
+    : tab === 'gear' ? accessoryState.equipped : skinState.equipped;
 }
 function equipFor(tab: Tab, id: string): void {
   if (tab === 'trails') equipTrail(id);
   else if (tab === 'worlds') equipWorld(id);
+  else if (tab === 'gear') equipAccessory(id);
   else equipSkin(id);
 }
-function accent(tab: Tab, item: Skin | Trail | World): string {
+function accent(tab: Tab, item: Item): string {
   if (tab === 'worlds') return (item as World).node;
   if (tab === 'trails') return (item as Trail).c || skin().c;
+  if (tab === 'gear') return (item as Accessory).c || skin().c;
   return (item as Skin).c;
 }
 
-function buy(tab: Tab, item: Skin | Trail | World): void {
+function buy(tab: Tab, item: Item): void {
   if (item.req) return;   // skill-gated items are earned, never bought
   if (Profile.coins < item.price) return;
   Profile.coins -= item.price;
   Store.set('coil_coins', Profile.coins);
   if (tab === 'trails') { ownTrail(item.id); equipTrail(item.id); }
   else if (tab === 'worlds') { ownWorld(item.id); equipWorld(item.id); }
+  else if (tab === 'gear') { ownAccessory(item.id); equipAccessory(item.id); }
   else { ownSkin(item.id); equipSkin(item.id); }
   Telemetry.unlock(item.id);
   SFX.unlock();
@@ -215,6 +225,88 @@ function drawWorldPreview(x: number, y: number, w: number, h: number, item: Worl
   ctx.restore();
 }
 
+/* accessory preview — a neutral character orb wearing the accessory, drawn
+   statically (the shop can be open with no active run, so it can't use G.t). */
+function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
+  const { ctx } = view;
+  const sk = skin();
+  const r = 15;
+  const c = item.c || sk.c;
+  const tcol = item.t || sk.t;
+  ctx.save();
+  // base orb
+  ctx.fillStyle = sk.c;
+  ctx.shadowColor = sk.c;
+  ctx.shadowBlur = glowFX(14);
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.beginPath();
+  ctx.arc(x - r * 0.32, y - r * 0.34, r * 0.26, 0, TAU);
+  ctx.fill();
+  // accessory
+  ctx.fillStyle = c;
+  ctx.strokeStyle = c;
+  ctx.shadowColor = c;
+  ctx.shadowBlur = glowFX(8);
+  if (item.kind === 'orbit') {
+    const n = item.count || 3;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU - Math.PI / 2;
+      const sx = x + Math.cos(a) * (r + 10);
+      const sy = y + Math.sin(a) * (r + 10) * 0.66;
+      if (item.shape === 'star') {
+        ctx.save(); ctx.translate(sx, sy);
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const sa = (k / 4) * TAU;
+          ctx.lineTo(Math.cos(sa) * 3.2, Math.sin(sa) * 3.2);
+          ctx.lineTo(Math.cos(sa + 0.39) * 1.3, Math.sin(sa + 0.39) * 1.3);
+        }
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      } else if (item.shape === 'moon') {
+        ctx.beginPath(); ctx.arc(sx, sy, 2.8, 0, TAU); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.arc(sx, sy, 2.6, 0, TAU); ctx.fill();
+      }
+    }
+  } else if (item.kind === 'aura') {
+    if (item.glyph === 'halo') {
+      ctx.strokeStyle = tcol;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.ellipse(x, y - r - 6, r * 0.95, r * 0.34, 0, 0, TAU);
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 7, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  } else if (item.kind === 'crown') {
+    if (item.glyph === 'visor') {
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.78, Math.PI * 1.16, Math.PI * 1.84);
+      ctx.stroke();
+    } else {
+      ctx.save();
+      ctx.translate(x, y - r - 1);
+      ctx.beginPath();
+      ctx.moveTo(-7, 2); ctx.lineTo(-7, -3); ctx.lineTo(-3, 0);
+      ctx.lineTo(0, -6); ctx.lineTo(3, 0); ctx.lineTo(7, -3); ctx.lineTo(7, 2);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
 /* small rarity gem in the card corner */
 function drawGem(cx: number, cy: number, r: number, col: string): void {
   const { ctx } = view;
@@ -287,7 +379,7 @@ export function renderShop(): void {
   ctx.lineWidth = 1;
   ctx.stroke();
   const segPad = 4;
-  const segW = (trackW - segPad * 2) / 3;
+  const segW = (trackW - segPad * 2) / TABS.length;
   for (let i = 0; i < TABS.length; i++) {
     const [id, label] = TABS[i];
     const active = shopTab === id;
@@ -306,7 +398,8 @@ export function renderShop(): void {
   }
 
   // ---- item grid ----
-  const list: Array<Skin | Trail | World> = shopTab === 'trails' ? TRAILS : shopTab === 'worlds' ? WORLDS : SKINS;
+  const list: Item[] = shopTab === 'trails' ? TRAILS : shopTab === 'worlds' ? WORLDS
+    : shopTab === 'gear' ? ACCESSORIES : SKINS;
   const owned = ownedFor(shopTab);
   const eqId = equippedFor(shopTab);
   const cols = 2;
@@ -362,6 +455,7 @@ export function renderShop(): void {
     const pcy = y + 44;
     if (shopTab === 'chars') drawCharPreview(pcx, pcy, 17, item as Skin, isOwned);
     else if (shopTab === 'trails') drawTrailPreview(pcx, pcy, Math.min(72, cw * 0.65), item as Trail);
+    else if (shopTab === 'gear') drawAccessoryPreview(pcx, pcy, item as Accessory);
     else drawWorldPreview(x + 16, y + 22, cw - 32, 44, item as World);
 
     text(item.name, pcx, y + 82, 14, isOwned ? '#fff' : '#c5cef0', 800, 0);

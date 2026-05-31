@@ -2,6 +2,7 @@ import { view } from '../core/canvas';
 import { state, sY } from '../game/state';
 import { skin } from '../game/skins';
 import { trail, world } from '../game/collection';
+import { accessory } from '../game/accessories';
 import { Profile } from '../game/profile';
 import { Pop } from '../core/particles';
 import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
@@ -262,6 +263,148 @@ function drawGate(): void {
   ctx.restore();
 }
 
+/* Always-on "next gate" guide. Highlights the node you should aim for next and
+   is re-drawn ON TOP of the celebratory FX, so a confetti/coin burst can never
+   hide where to go — the core "I can't see the path" complaint. Subtle during
+   calm play (a thin pulsing ring); if the target is above the top of the screen
+   it becomes a chevron at the top edge pointing the way. */
+function drawTargetBeacon(): void {
+  const { ctx, W, H } = view;
+  const G = state.G;
+  const tgt = G.target;
+  if (!tgt || G.dead) return;
+  const sk = skin();
+  const x = tgt.wx;
+  const y = sY(tgt.wy);
+  const pulse = 0.5 + 0.5 * Math.sin(G.t * 4);
+  if (y < 44) {
+    // target is off the top of the screen — point to it from the top edge
+    const cxv = clamp(x, 28, W - 28);
+    ctx.save();
+    ctx.globalAlpha = 0.55 + pulse * 0.35;
+    ctx.fillStyle = sk.t;
+    ctx.shadowColor = sk.t;
+    ctx.shadowBlur = glowFX(10);
+    ctx.beginPath();
+    ctx.moveTo(cxv, 20);
+    ctx.lineTo(cxv - 8, 34);
+    ctx.lineTo(cxv + 8, 34);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  if (y > H + 40) return;
+  ctx.save();
+  ctx.globalAlpha = 0.32 + pulse * 0.22;
+  ctx.strokeStyle = sk.t;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = sk.t;
+  ctx.shadowBlur = glowFX(8);
+  ctx.beginPath();
+  ctx.arc(x, y, tgt.r + 6 + pulse * 2, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* Accessory render — the worn cosmetic slot, drawn around the player in screen
+   space (animated on `time`, not rotated with the orb's facing). Deliberately
+   small and modest-alpha so it never competes with the gate for attention.
+   Exported so the home-screen orbit preview can reuse the exact same look. */
+export function drawAccessoryAt(cx: number, cy: number, r: number, time: number): void {
+  const acc = accessory();
+  if (acc.kind === 'none') return;
+  const { ctx } = view;
+  const G = { t: time };
+  const sk = skin();
+  const c = acc.c || sk.c;
+  const tcol = acc.t || sk.t;
+  ctx.save();
+  ctx.translate(cx, cy);
+  if (acc.kind === 'orbit') {
+    const n = acc.count || 3;
+    const rad = r + 11;
+    for (let i = 0; i < n; i++) {
+      const a = G.t * 2.1 + (i / n) * TAU;
+      ctx.save();
+      ctx.translate(Math.cos(a) * rad, Math.sin(a) * rad * 0.66);
+      ctx.fillStyle = c;
+      ctx.strokeStyle = c;
+      ctx.shadowColor = c;
+      ctx.shadowBlur = glowFX(8);
+      if (acc.shape === 'star') {
+        ctx.rotate(G.t * 3 + i);
+        ctx.beginPath();
+        for (let k = 0; k < 4; k++) {
+          const sa = (k / 4) * TAU;
+          ctx.lineTo(Math.cos(sa) * 3.2, Math.sin(sa) * 3.2);
+          ctx.lineTo(Math.cos(sa + 0.39) * 1.3, Math.sin(sa + 0.39) * 1.3);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else if (acc.shape === 'ring') {
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(0, 0, 2.6, 0, TAU); ctx.stroke();
+      } else if (acc.shape === 'moon') {
+        ctx.beginPath(); ctx.arc(0, 0, 2.8, 0, TAU); ctx.fill();
+        ctx.fillStyle = tcol;
+        ctx.beginPath(); ctx.arc(-0.9, -0.9, 1.1, 0, TAU); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.arc(0, 0, 2.6, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
+  } else if (acc.kind === 'aura') {
+    const pulse = 0.5 + 0.5 * Math.sin(G.t * 3);
+    if (acc.glyph === 'halo') {
+      ctx.translate(0, -r - 6);
+      ctx.strokeStyle = tcol;
+      ctx.shadowColor = c;
+      ctx.shadowBlur = glowFX(10);
+      ctx.lineWidth = 2.4;
+      ctx.globalAlpha = 0.8 + pulse * 0.2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * 0.95, r * 0.34, 0, 0, TAU);
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.16 + pulse * 0.14;
+      ctx.strokeStyle = c;
+      ctx.shadowColor = c;
+      ctx.shadowBlur = glowFX(14);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, r + 6 + pulse * 3, 0, TAU);
+      ctx.stroke();
+    }
+  } else if (acc.kind === 'crown') {
+    ctx.fillStyle = c;
+    ctx.strokeStyle = c;
+    ctx.shadowColor = c;
+    ctx.shadowBlur = glowFX(8);
+    if (acc.glyph === 'visor') {
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.78, Math.PI * 1.16, Math.PI * 1.84);
+      ctx.stroke();
+    } else {
+      // crown above the head
+      ctx.translate(0, -r - 1);
+      ctx.beginPath();
+      ctx.moveTo(-7, 2);
+      ctx.lineTo(-7, -3);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(0, -6);
+      ctx.lineTo(3, 0);
+      ctx.lineTo(7, -3);
+      ctx.lineTo(7, 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 function drawPlayer(): void {
   const { ctx } = view;
   const G = state.G;
@@ -423,6 +566,7 @@ function drawPlayer(): void {
       ctx.fill();
     }
     ctx.restore();
+    drawAccessoryAt(x, y, pl.r * scale, G.t);
   }
 }
 
@@ -912,6 +1056,12 @@ export function renderPlay(): void {
   drawTutorialHand();
   Pop.draw();
   fxDrawWorld();
+  // Re-assert the interactive layer ABOVE the celebratory FX so a big confetti
+  // /coin/shock burst can never bury where to go or where you are. The effects
+  // themselves are untouched — only the layering guarantees readability.
+  drawTargetBeacon();
+  drawGate();
+  drawPlayer();
   drawComboFlash();
 
   // FOCUS — a calm slow-motion wash so the slowdown reads clearly.

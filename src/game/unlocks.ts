@@ -1,9 +1,10 @@
-import type { Skin, Trail, World, UnlockReq } from '../types';
+import type { Accessory, Skin, Trail, World, UnlockReq } from '../types';
 import { Profile } from './profile';
 import { Achievements } from './achievements';
 import { Owned, ownSkin } from './skins';
 import { OwnedTrails, OwnedWorlds, ownTrail, ownWorld } from './collection';
-import { SKINS, TRAILS, WORLDS } from '../config';
+import { OwnedAccessories, ownAccessory } from './accessories';
+import { SKINS, MILESTONE_SKINS, TRAILS, WORLDS, ACCESSORIES } from '../config';
 
 /* =========================================================================
    UNLOCK ROUTES — items may carry a skill-based `req` (height / combo / streak
@@ -61,7 +62,7 @@ export function reqFraction(req: UnlockReq): number {
   }
 }
 
-interface Claimed { skins: Skin[]; trails: Trail[]; worlds: World[]; }
+interface Claimed { skins: Skin[]; trails: Trail[]; worlds: World[]; accessories: Accessory[]; }
 
 /**
  * Grant any skill-gated cosmetics whose requirement is now met but which the
@@ -69,8 +70,8 @@ interface Claimed { skins: Skin[]; trails: Trail[]; worlds: World[]; }
  * celebrate it on the result screen. Safe to call repeatedly (idempotent).
  */
 export function claimEarnedUnlocks(): Claimed {
-  const out: Claimed = { skins: [], trails: [], worlds: [] };
-  for (const s of SKINS) {
+  const out: Claimed = { skins: [], trails: [], worlds: [], accessories: [] };
+  for (const s of [...SKINS, ...MILESTONE_SKINS]) {
     if (s.req && !Owned.includes(s.id) && reqMet(s.req)) { ownSkin(s.id); out.skins.push(s); }
   }
   for (const t of TRAILS) {
@@ -78,6 +79,9 @@ export function claimEarnedUnlocks(): Claimed {
   }
   for (const w of WORLDS) {
     if (w.req && !OwnedWorlds.includes(w.id) && reqMet(w.req)) { ownWorld(w.id); out.worlds.push(w); }
+  }
+  for (const a of ACCESSORIES) {
+    if (a.req && !OwnedAccessories.includes(a.id) && reqMet(a.req)) { ownAccessory(a.id); out.accessories.push(a); }
   }
   return out;
 }

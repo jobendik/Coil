@@ -6,9 +6,11 @@ import { Daily } from '../game/daily';
 import { DailyRun } from '../game/dailyrun';
 import { Vault } from '../game/vault';
 import { glowFX, TAU, clamp, rr, text } from '../core/utils';
-import { btn } from '../core/ui';
+import { btn, resetButtons } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
-import { drawBG, drawTopToggles } from './play';
+import { drawBG, drawTopToggles, drawAccessoryAt } from './play';
+import { Wheel, Chest } from '../game/rewards';
+import { overlayKind, openOverlay, drawOverlay, maybeAutoOpenLogin } from './overlays';
 import { MILESTONES, SKINS } from '../config';
 
 let onPlayRequested: () => void = () => { /* injected by main.ts */ };
@@ -37,6 +39,77 @@ function nextGoalLine(): string {
 }
 
 let homeT = 0;
+let loginOffered = false;
+
+/* Top-right reward shortcuts: the spin wheel + bonus chest, each with a small
+   "available" badge so the player sees there's something to claim. */
+function drawRewardIcons(): void {
+  const { ctx, W, SAFE_TOP } = view;
+  const s = 42;
+  const pad = 12;
+  const top = pad + SAFE_TOP;
+  const wx = W - pad - s;
+  const cxx = W - pad - 2 * s - 8;
+
+  const pill = (x: number): void => {
+    rr(x, top, s, s, 10);
+    ctx.fillStyle = 'rgba(20,16,48,.7)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  };
+  const badge = (x: number): void => {
+    ctx.save();
+    ctx.fillStyle = '#ff4d8d';
+    ctx.shadowColor = '#ff4d8d';
+    ctx.shadowBlur = glowFX(8 + Math.sin(homeT * 6) * 4);
+    ctx.beginPath();
+    ctx.arc(x + s - 6, top + 6, 5, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  };
+
+  // WHEEL icon (circle + spokes)
+  pill(wx);
+  ctx.save();
+  ctx.strokeStyle = '#cdb4ff';
+  ctx.lineWidth = 2;
+  ctx.translate(wx + s / 2, top + s / 2);
+  ctx.rotate(homeT * 0.6);
+  ctx.beginPath(); ctx.arc(0, 0, 9, 0, TAU); ctx.stroke();
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * 2, Math.sin(a) * 2);
+    ctx.lineTo(Math.cos(a) * 9, Math.sin(a) * 9);
+    ctx.stroke();
+  }
+  ctx.restore();
+  if (Wheel.available()) badge(wx);
+  btn('homewheel', wx, top, s, s, () => openOverlay('wheel'));
+
+  // CHEST icon (box + lid)
+  pill(cxx);
+  ctx.save();
+  ctx.strokeStyle = '#ffd24a';
+  ctx.fillStyle = '#ffd24a';
+  ctx.lineWidth = 2;
+  const bx = cxx + s / 2;
+  const by = top + s / 2;
+  rr(bx - 9, by - 2, 18, 10, 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(bx - 9, by - 2);
+  ctx.lineTo(bx - 9, by - 6);
+  ctx.lineTo(bx + 9, by - 6);
+  ctx.lineTo(bx + 9, by - 2);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(bx, by + 3, 1.6, 0, TAU); ctx.fill();
+  ctx.restore();
+  if (Chest.available()) badge(cxx);
+  btn('homechest', cxx, top, s, s, () => openOverlay('chest'));
+}
 
 export function renderHome(dt: number): void {
   const { ctx, W, H } = view;
@@ -114,6 +187,8 @@ export function renderHome(dt: number): void {
     ctx.fill();
   }
   ctx.restore();
+  // show the equipped accessory on the menu character (same look as in-game)
+  drawAccessoryAt(px, py, 8, homeT);
 
   text('COIL', cx, cy - 118, 64, '#fff', 800, 26, 'center', "'Unbounded'");
   text('Tap in the glowing gate · climb the void', cx, cy - 76, 13, '#9fb0e0', 600, 0);
@@ -268,5 +343,18 @@ export function renderHome(dt: number): void {
     state.scene = 'shop';
   });
 
+  drawRewardIcons();
   drawTopToggles();
+
+  // Offer the daily login bonus once per session load (auto-opens if available).
+  if (!loginOffered) {
+    loginOffered = true;
+    maybeAutoOpenLogin();
+  }
+  // Modal reward overlays render on top and become fully modal: clear the home
+  // buttons so only the overlay's buttons receive taps.
+  if (overlayKind() !== 'none') {
+    resetButtons();
+    drawOverlay(dt);
+  }
 }

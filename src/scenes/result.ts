@@ -15,7 +15,8 @@ import { clamp, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
 import { dimVoid } from './play';
-import { MILESTONES, SKINS, TRAILS, WORLDS } from '../config';
+import { openEvo } from './evo';
+import { MILESTONES, MILESTONE_SKINS, SKINS, TRAILS, WORLDS } from '../config';
 
 interface ResultBar {
   label: string;
@@ -231,11 +232,31 @@ export const Result = {
     return `Beat your best: ${Profile.best} m`;
   },
 
+  /** Build the "✦ UNLOCKED · …" line so it fits the screen width, trimming the
+   *  list to "+N more" when too many cosmetics were earned in one run. */
+  fitUnlocks(names: string[]): string {
+    const { ctx, W } = view;
+    const prefix = '✦ UNLOCKED · ';
+    const maxW = W * 0.9;
+    ctx.save();
+    ctx.font = "800 13px 'Sora', sans-serif";
+    let shown = names.length;
+    let str = prefix + names.join(' + ');
+    while (shown > 1 && ctx.measureText(str).width > maxW) {
+      shown--;
+      str = prefix + names.slice(0, shown).join(' + ') + '  +' + (names.length - shown) + ' more';
+    }
+    ctx.restore();
+    return str;
+  },
+
   /** The single most exciting one-liner to surface under the stat row. */
   highlightLine(): [string, string] | null {
     const d = this.d;
     // A freshly-earned cosmetic outranks most things — it's the rarest payoff.
-    if (d.claimedUnlocks.length) return ['✦ UNLOCKED · ' + d.claimedUnlocks.join(' + '), '#9be35a'];
+    // A big run can unlock many cosmetics at once, so fit the names to the screen
+    // width and collapse the overflow into "+N more" instead of bleeding off-edge.
+    if (d.claimedUnlocks.length) return [this.fitUnlocks(d.claimedUnlocks), '#9be35a'];
     if (d.potWon > 0) return ['★ +' + d.potWon + ' STAR VAULT', '#ffd24a'];
     if (d.dailyMedals.length) return [d.dailyMedals.map((m) => m.name).join(' + ') + ' MEDAL', '#ffd24a'];
     if (d.constellations > 0) return ['✦ ' + d.constellations + ' CONSTELLATION' + (d.constellations > 1 ? 'S' : ''), '#cdb4ff'];
@@ -309,7 +330,6 @@ export const Result = {
     const sk = skin();
     const pw = W * 0.62;
     const px = W / 2 - pw / 2;
-    const half = (pw - 12) / 2;
 
     text(this.nextAction(), W / 2, hasTopCTA ? H * 0.60 : H * 0.70, 14, '#9fb0e0', 600, 0);
 
@@ -366,25 +386,51 @@ export const Result = {
       py += ph + 12;
     }
 
-    rr(px, py, half, 46, 12);
+    // Bottom row: EVOLUTION · COLLECTION · MENU. The Evolution button shows the
+    // milestone-character progress and glows when a new form was earned this run.
+    const g3 = 9;
+    const third = (pw - g3 * 2) / 3;
+    const evoEarned = MILESTONE_SKINS.reduce((n, s) => n + (Owned.includes(s.id) ? 1 : 0), 0);
+    const newEvo = d.claimedUnlocks.some((nm) => MILESTONE_SKINS.some((s) => s.name === nm));
+    rr(px, py, third, 46, 12);
+    ctx.fillStyle = 'rgba(20,16,48,.7)';
+    ctx.fill();
+    if (newEvo) {
+      ctx.strokeStyle = '#9be35a';
+      ctx.shadowColor = '#9be35a';
+      ctx.shadowBlur = 12 + Math.sin(this.t * 5) * 6;
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    }
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    text('EVOLUTION', px + third / 2, py + 17, 11, newEvo ? '#9be35a' : '#cdb4ff', 800, newEvo ? 4 : 0);
+    text(evoEarned + '/' + MILESTONE_SKINS.length, px + third / 2, py + 32, 9.5, '#9fb0e0', 700, 0);
+    btn('revo', px, py, third, 46, () => { openEvo(); state.scene = 'evo'; });
+
+    const cx2 = px + third + g3;
+    rr(cx2, py, third, 46, 12);
     ctx.fillStyle = 'rgba(20,16,48,.7)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.12)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    text('COLLECTION', px + half / 2, py + 23, 13, sk.t, 700, 0);
-    btn('rshop', px, py, half, 46, () => {
+    text('SHOP', cx2 + third / 2, py + 23, 12, sk.t, 700, 0);
+    btn('rshop', cx2, py, third, 46, () => {
       Telemetry.shopOpen();
       state.scene = 'shop';
     });
-    rr(px + half + 12, py, half, 46, 12);
+
+    const mx2 = px + (third + g3) * 2;
+    rr(mx2, py, third, 46, 12);
     ctx.fillStyle = 'rgba(20,16,48,.7)';
     ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,.12)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
-    text('MENU', px + half + 12 + half / 2, py + 23, 13, '#9fb0e0', 700, 0);
-    btn('rmenu', px + half + 12, py, half, 46, () => {
+    text('MENU', mx2 + third / 2, py + 23, 12, '#9fb0e0', 700, 0);
+    btn('rmenu', mx2, py, third, 46, () => {
       state.scene = 'home';
     });
 
