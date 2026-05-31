@@ -8,6 +8,7 @@ import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
 import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
 import { renderPlay, setZenExitHandler } from './scenes/play';
 import { renderShop } from './scenes/shop';
+import { renderEvo, evoDown, evoMove, evoUp } from './scenes/evo';
 import { ac } from './core/audio';
 import { Music } from './core/music';
 import { CG } from './core/cg';
@@ -114,6 +115,12 @@ function onDown(e: PointerEvent): void {
   inputLock = true;
   setTimeout(() => { inputLock = false; }, 40);
   const { x, y } = pos(e);
+  // Evolution panel uses horizontal swipe-to-scroll: defer the button hit-test
+  // to pointerup so we can tell a tap (equip) from a drag (scroll).
+  if (state.scene === 'evo') {
+    evoDown(x);
+    return;
+  }
   if (state.scene !== 'play') {
     hitButtons(x, y);
     return;
@@ -125,8 +132,19 @@ function onDown(e: PointerEvent): void {
 }
 
 view.cv.addEventListener('pointerdown', onDown, { passive: false });
-view.cv.addEventListener('pointercancel', () => { inputLock = false; }, { passive: false });
+view.cv.addEventListener('pointercancel', () => { inputLock = false; evoUp(); }, { passive: false });
 view.cv.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Evolution-panel drag: track horizontal movement, and on release treat a
+// negligible move as a tap (run the button hit-test at the release point).
+view.cv.addEventListener('pointermove', (e) => {
+  if (state.scene === 'evo') evoMove(pos(e).x);
+}, { passive: true });
+view.cv.addEventListener('pointerup', (e) => {
+  if (state.scene !== 'evo') return;
+  const { x, y } = pos(e);
+  if (evoUp()) hitButtons(x, y);
+}, { passive: false });
 
 // Desktop keyboard (CrazyGames has heavy desktop traffic): Space / Enter / ArrowUp
 window.addEventListener('keydown', (e) => {
@@ -222,6 +240,8 @@ function frame(now: number): void {
     Result.render();
   } else if (state.scene === 'shop') {
     renderShop();
+  } else if (state.scene === 'evo') {
+    renderEvo(dt);
   }
   ctx.restore();
 

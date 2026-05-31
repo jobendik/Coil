@@ -1,4 +1,4 @@
-import type { Skin, Zone, Goal, Trail, World, DailyMedal } from './types';
+import type { Skin, Zone, Goal, Trail, World, DailyMedal, Accessory } from './types';
 
 /* =========================================================================
    PHYSICS CONSTANTS (Hybrid: constant launch, forgiving survival)
@@ -66,6 +66,29 @@ export const SKINS: Skin[] = [
   { id: 'white',  name: 'Prism', price: 2600, c: '#ffffff', t: '#cfe9ff', tag: 'Mythic', req: { kind: 'ach', value: 'first1k' } },
 ];
 
+/* ---------- milestone evolution characters (height-earned, one per 100 m) ----------
+   A dedicated progression TRACK, separate from the coin shop. One new character
+   unlocks every 100 m and is auto-claimed when that height is reached (see
+   game/unlocks.ts). They are browsed + equipped from the death-screen Evolution
+   panel rather than the shop grid (which doesn't scroll). Purely cosmetic — these
+   carry a colour identity; accessories add shape variety on top. Hand-tuned neon
+   palette so the ladder reads as a premium "evolving creature", not random recolours. */
+export const MILESTONE_STEP = 100;
+export const MILESTONE_SKINS: Skin[] = [
+  { id: 'evo1',  name: 'Sprout',  price: 0, c: '#6bffb0', t: '#d6ffec', tag: 'Evolution', req: { kind: 'height', value: 100 } },
+  { id: 'evo2',  name: 'Drift',   price: 0, c: '#45d7ff', t: '#cdf3ff', tag: 'Evolution', req: { kind: 'height', value: 200 } },
+  { id: 'evo3',  name: 'Surge',   price: 0, c: '#5b86ff', t: '#cdd8ff', tag: 'Evolution', req: { kind: 'height', value: 300 } },
+  { id: 'evo4',  name: 'Bloom',   price: 0, c: '#9b6bff', t: '#e0d3ff', tag: 'Evolution', req: { kind: 'height', value: 400 } },
+  { id: 'evo5',  name: 'Lumen',   price: 0, c: '#ff6bd6', t: '#ffd3f2', tag: 'Evolution', req: { kind: 'height', value: 500 } },
+  { id: 'evo6',  name: 'Blaze',   price: 0, c: '#ff7a4d', t: '#ffd8c6', tag: 'Evolution', req: { kind: 'height', value: 600 } },
+  { id: 'evo7',  name: 'Crest',   price: 0, c: '#ffc24d', t: '#ffeec2', tag: 'Evolution', req: { kind: 'height', value: 700 } },
+  { id: 'evo8',  name: 'Helix',   price: 0, c: '#b6ff4d', t: '#e9ffc2', tag: 'Evolution', req: { kind: 'height', value: 800 } },
+  { id: 'evo9',  name: 'Quasar',  price: 0, c: '#4dffd0', t: '#c6fff1', tag: 'Evolution', req: { kind: 'height', value: 900 } },
+  { id: 'evo10', name: 'Pulsar',  price: 0, c: '#7aa0ff', t: '#d6e2ff', tag: 'Evolution', req: { kind: 'height', value: 1000 } },
+  { id: 'evo11', name: 'Nebula',  price: 0, c: '#c77dff', t: '#ecd6ff', tag: 'Evolution', req: { kind: 'height', value: 1100 } },
+  { id: 'evo12', name: 'Zenith',  price: 0, c: '#ffffff', t: '#fff6c2', tag: 'Evolution', req: { kind: 'height', value: 1200 } },
+];
+
 /* ---------- trails (flight ribbon styles — cosmetic) ---------- */
 export const TRAILS: Trail[] = [
   { id: 'line',    name: 'Clean Beam',     price: 0,    style: 'line',    c: null,      t: null,      tag: 'Readable' },
@@ -74,6 +97,21 @@ export const TRAILS: Trail[] = [
   { id: 'sparkle', name: 'Stardust',       price: 480,  style: 'sparkle', c: '#cfe9ff', t: '#ffffff', tag: 'Magic' },
   { id: 'bubbles', name: 'Nebula Bubbles', price: 640,  style: 'bubbles', c: '#55d6ff', t: '#d5f8ff', tag: 'Soft' },
   { id: 'rainbow', name: 'Prism Ribbon',   price: 1400, style: 'rainbow', c: null,      t: null,      tag: 'Rare', req: { kind: 'combo', value: 9 } },
+];
+
+/* ---------- accessories (worn ON TOP of the character — a 2nd equip slot) ----------
+   A mixed set: orbiting satellites, glow auras, and headgear. Some coin-buyable,
+   some skill-earned (varied routes). `c: null` inherits the character colour so
+   any accessory pairs with any character. Kept ≤ a screen of cards so the shop
+   grid (which doesn't scroll) shows them all, like the Worlds tab. */
+export const ACCESSORIES: Accessory[] = [
+  { id: 'none',     name: 'None',         price: 0,    kind: 'none',  c: null,      t: null,      tag: 'Default' },
+  { id: 'moons',    name: 'Moons',        price: 300,  kind: 'orbit', c: null,      t: null,      tag: 'Orbit', count: 3, shape: 'moon' },
+  { id: 'stardust', name: 'Stardust Ring',price: 550,  kind: 'orbit', c: '#ffe39b', t: '#fff6c2', tag: 'Orbit', count: 5, shape: 'star' },
+  { id: 'halo',     name: 'Halo',         price: 450,  kind: 'aura',  c: '#cfe9ff', t: '#ffffff', tag: 'Aura',  glyph: 'halo' },
+  { id: 'nova',     name: 'Nova Aura',    price: 0,    kind: 'aura',  c: '#a9ecff', t: '#d5f8ff', tag: 'Aura',  glyph: 'soft', req: { kind: 'constel', value: 5 } },
+  { id: 'crown',    name: 'Crown',        price: 0,    kind: 'crown', c: '#ffd24a', t: '#fff6c2', tag: 'Royal', glyph: 'crown', req: { kind: 'combo', value: 8 } },
+  { id: 'visor',    name: 'Visor',        price: 0,    kind: 'crown', c: '#2ff3e0', t: '#9ffff2', tag: 'Tech',  glyph: 'visor', req: { kind: 'height', value: 700 } },
 ];
 
 /* ---------- worlds (backdrop + void colour + node accent — cosmetic) ---------- */

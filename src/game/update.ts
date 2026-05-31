@@ -15,6 +15,7 @@ import { Scores } from './scores';
 import { Vault } from './vault';
 import { Achievements } from './achievements';
 import { claimEarnedUnlocks } from './unlocks';
+import { Chest } from './rewards';
 import { DailyRun } from './dailyrun';
 import { CG } from '../core/cg';
 import { Telemetry } from '../core/telemetry';
@@ -85,6 +86,9 @@ export function update(dt: number): void {
     pl.vy -= G_FALL * dt;
     pl.wx += pl.vx * dt;
     pl.wy += pl.vy * dt;
+    // keep the falling body in frame during the short death tumble
+    const camDownD = pl.wy - 0.20 * H;
+    if (camDownD < G.cameraY) G.cameraY = lerp(G.cameraY, camDownD, Math.min(1, dt * 6));
     if (G.deadT > DEATH_ANIM) endRun();
     return;
   }
@@ -158,8 +162,20 @@ export function update(dt: number): void {
 
   G.maxY = Math.max(G.maxY, pl.wy);
   G.height = Math.max(0, Math.round((G.maxY + 90) / 12));
-  const camT = pl.wy - 0.42 * H;
-  if (camT > G.cameraY) G.cameraY = lerp(G.cameraY, camT, Math.min(1, dt * 6));
+  // Camera follow. Climbing: keep the player ~58% down the screen and chase up
+  // briskly. Falling: the camera used to FREEZE, so a long plunge dropped the
+  // player off the bottom and you couldn't see the abyss approaching. Now it
+  // also eases DOWN — but only past a dead-zone (the player must fall ~22% of a
+  // screen below the last peak before it engages), so small dips don't jitter
+  // the view. The player can sink to ~80% down so the rising void stays in
+  // frame beneath them.
+  const camUp = pl.wy - 0.42 * H;
+  if (camUp > G.cameraY) {
+    G.cameraY = lerp(G.cameraY, camUp, Math.min(1, dt * 6));
+  } else {
+    const camDown = pl.wy - 0.20 * H;          // deeper framing while falling
+    if (camDown < G.cameraY) G.cameraY = lerp(G.cameraY, camDown, Math.min(1, dt * 5));
+  }
 
   if (!G.beatBest && Profile.best > 0 && G.height > Profile.best) {
     G.beatBest = true;
@@ -761,6 +777,9 @@ export function bankRun(): ResultData {
     missionRewards += Daily.report('combo', mc);
   }
   const dDone = missionRewards > 0;
+  // Completing ALL daily missions earns a bonus chest (once per day) — a chunky
+  // reason to finish the set and to open the chest on the home screen.
+  if (!zen && Daily.allDone()) Chest.grantDailyOnce();
 
   G.banked.h = h;
   G.banked.perf = perf;
@@ -795,6 +814,7 @@ export function bankRun(): ResultData {
     ...claimed.skins.map((s) => s.name),
     ...claimed.trails.map((t) => t.name),
     ...claimed.worlds.map((w) => w.name),
+    ...claimed.accessories.map((a) => a.name),
   ];
 
   if (newBest) { CG.happy(); CG.submitHeight(Profile.best); }
