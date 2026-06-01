@@ -14,6 +14,21 @@ export const GATE_MARGIN = 6;      // the gate UNDER-promises: it only lights up
                                    // 16px buffer means small sub-step dips (wall bounces, grazes) can
                                    // never make a lit gate lie. Verified: 0 dishonest gates / 24k nodes.
 export const PERFECT_TOL0 = 0.36;  // base perfect angular window (radians, narrows w/ height)
+
+/* ---------- DAILY CHALLENGE virtual width (width-independent route) ----------
+   The Daily Challenge must be the SAME seeded route for every player today, but
+   node x-positions, the fairness pull-back, and any width-derived geometry used
+   to be clamped to the live canvas width — so a 390-wide phone and a 540-wide
+   tablet generated different layouts (and a width-dependent placement could even
+   desync the seeded RNG for the rest of the route). The fix: a daily run is
+   generated AND simulated in this FIXED virtual width, centred in the canvas
+   (see fieldLeft/fieldRight in game/state.ts). Because the field is centred,
+   view.W/2 is still the field centre, so only the playfield EDGES move — world
+   coordinates still equal screen coordinates, so rendering/FX are untouched.
+   390 matches the dev/test width, so the common 390-class device sees zero
+   change from a normal run (offset 0), and the flight physics stay in their
+   tuned range. Normal (non-daily) runs keep using the live width. */
+export const DAILY_VW = 390;
 export const EARLY_EASE_BOOST = 1.6;     // 0-50m perfect tolerance multiplier (new-player ramp)
 export const EARLY_EASE_END = 50;        // height (m) at which the boost decays to 1×
 export const NEAR_MISS_RADIUS = 90;      // world-px radius for the one-per-run save rescue

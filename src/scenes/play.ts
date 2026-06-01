@@ -1,5 +1,5 @@
 import { view } from '../core/canvas';
-import { state, sY } from '../game/state';
+import { state, sY, fieldLeft, fieldRight } from '../game/state';
 import { skin } from '../game/skins';
 import { trail, world } from '../game/collection';
 import { accessory } from '../game/accessories';
@@ -658,7 +658,7 @@ function drawPlayer(): void {
 }
 
 function drawTrajectory(): void {
-  const { ctx, W } = view;
+  const { ctx } = view;
   const G = state.G;
   const pl = G.player;
   if (!settings.aimPreview || !pl.latched || G.dead) return;
@@ -670,6 +670,10 @@ function drawTrajectory(): void {
   let vx = tx * LAUNCH;
   let vy = ty * LAUNCH;
   const h = 1 / 60;
+  // Mirror the real flight's wall bounces against the active playfield edges so
+  // the preview matches actual flight (the Daily Challenge runs in a fixed field).
+  const fl = fieldLeft();
+  const fr = fieldRight();
   // A short HINT of the arc, not a whip across the screen: fewer steps and a
   // quicker alpha falloff so it suggests the launch direction and fades out.
   const steps = 26;
@@ -679,8 +683,8 @@ function drawTrajectory(): void {
     vy -= G_FALL * h;
     x += vx * h;
     y += vy * h;
-    if (x < pl.r) { x = pl.r; vx = Math.abs(vx) * WALL; }
-    if (x > W - pl.r) { x = W - pl.r; vx = -Math.abs(vx) * WALL; }
+    if (x < fl + pl.r) { x = fl + pl.r; vx = Math.abs(vx) * WALL; }
+    if (x > fr - pl.r) { x = fr - pl.r; vx = -Math.abs(vx) * WALL; }
     let hitN = false;
     for (const n of G.nodes) {
       if (n.type === 'spike') continue;     // spikes kill; don't terminate the preview on them

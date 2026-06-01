@@ -1,6 +1,6 @@
 import type { AchSummary, DailyMedal, Node, ResultData } from '../types';
 import { view } from '../core/canvas';
-import { state, sY } from './state';
+import { state, sY, fieldLeft, fieldRight } from './state';
 import { genNode } from './nodes';
 import { computeSweetZone } from './physics';
 import { P, Pop, shake } from '../core/particles';
@@ -145,8 +145,12 @@ export function update(dt: number): void {
     pl.vy -= G_FALL * dt;
     pl.wx += pl.vx * dt;
     pl.wy += pl.vy * dt;
-    if (pl.wx < pl.r) { pl.wx = pl.r; pl.vx = Math.abs(pl.vx) * WALL; }
-    if (pl.wx > W - pl.r) { pl.wx = W - pl.r; pl.vx = -Math.abs(pl.vx) * WALL; }
+    // Bounce off the playfield edges (live canvas for normal runs; the fixed
+    // virtual field for the Daily Challenge so flight matches the seeded route).
+    const fl = fieldLeft();
+    const fr = fieldRight();
+    if (pl.wx < fl + pl.r) { pl.wx = fl + pl.r; pl.vx = Math.abs(pl.vx) * WALL; }
+    if (pl.wx > fr - pl.r) { pl.wx = fr - pl.r; pl.vx = -Math.abs(pl.vx) * WALL; }
     pl.face = lerp(pl.face, Math.atan2(pl.vy, pl.vx), Math.min(1, dt * 10));
     pl.trail.push({ x: pl.wx, y: pl.wy });
     if (pl.trail.length > 12) pl.trail.shift();
@@ -418,7 +422,8 @@ export function update(dt: number): void {
 function predictDoom(): boolean {
   const G = state.G;
   const pl = G.player;
-  const { W } = view;
+  const fl = fieldLeft();
+  const fr = fieldRight();
   const dt = 1 / 60;
   let x = pl.wx;
   let y = pl.wy;
@@ -428,8 +433,8 @@ function predictDoom(): boolean {
     vy -= G_FALL * dt;
     x += vx * dt;
     y += vy * dt;
-    if (x < pl.r) { x = pl.r; vx = Math.abs(vx) * WALL; }
-    if (x > W - pl.r) { x = W - pl.r; vx = -Math.abs(vx) * WALL; }
+    if (x < fl + pl.r) { x = fl + pl.r; vx = Math.abs(vx) * WALL; }
+    if (x > fr - pl.r) { x = fr - pl.r; vx = -Math.abs(vx) * WALL; }
     for (const n of G.nodes) {
       if (n.type === 'spike') continue;
       if (n === pl.lastReleased && i < 16) continue;   // matches the 0.25 s re-catch lockout

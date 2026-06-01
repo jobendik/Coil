@@ -5,7 +5,7 @@ import { Profile } from './profile';
 import { setRunSeed } from './nodes';
 import { dailySeed } from './dailyrun';
 import { fxClear } from '../core/fx';
-import { FRENZY_TIME } from '../config';
+import { DAILY_VW, FRENZY_TIME } from '../config';
 
 /* Singleton container for runtime-mutable state. Splitting into per-domain
    slots keeps modules from reaching into a 30-field "G" anonymously. */
@@ -61,6 +61,11 @@ export function resetRun(daily = false, zen = false): void {
     comboFlashColor: '#fff',
     firstRunOfDay: firstOfDay,
     coinMult: firstOfDay ? 2 : 1,
+    // Daily Challenge: simulate in a FIXED virtual width centred in the canvas so
+    // the seeded route is identical on every device. fieldX is the (frozen) left
+    // offset; normal runs use the whole live canvas (fieldX 0). Frozen at run start
+    // so a mid-run resize can't shift the field out from under already-placed nodes.
+    fieldX: daily ? (W - DAILY_VW) / 2 : 0,
     daily,
     zen,
     focusT: 0,
@@ -101,6 +106,19 @@ export function resetRun(daily = false, zen = false): void {
     },
   };
   state.G = G;
+}
+
+/* Playfield x-bounds (world == screen px) the SIMULATION uses for wall bounces,
+   node placement and the fairness pull-back. Normal runs track the live canvas
+   width; the Daily Challenge uses a FIXED virtual field (DAILY_VW wide, centred
+   via the frozen fieldX) so the seeded route + flight physics are byte-identical
+   on every device. For a normal run these collapse to [0, view.W] — i.e. exactly
+   the previous behaviour — which keeps the gate-honesty invariant unchanged. */
+export function fieldLeft(): number {
+  return state.G?.daily ? state.G.fieldX : 0;
+}
+export function fieldRight(): number {
+  return state.G?.daily ? state.G.fieldX + DAILY_VW : view.W;
 }
 
 /** Convert a world-space Y to screen-space Y (camera applied, screen origin top-left). */
