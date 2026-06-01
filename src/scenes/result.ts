@@ -11,11 +11,11 @@ import { CG } from '../core/cg';
 import { SFX, cheerSwell, cymbal } from '../core/audio';
 import { Coins, Confetti, FlyCoins, bankXY } from '../core/fx';
 import { buzz } from '../core/haptics';
-import { clamp, lerp, rr, text } from '../core/utils';
+import { clamp, glowFX, hexA, lerp, rr, TAU, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
 import { dimVoid } from './play';
-import { openEvo } from './evo';
+import { openAscent } from './ascent';
 import { MILESTONES, MILESTONE_SKINS, SKINS, TRAILS, WORLDS } from '../config';
 
 interface ResultBar {
@@ -143,6 +143,113 @@ export const Result = {
   nextUnlockPct(): number {
     const u = this.nextUnlock();
     return u ? clamp(Profile.coins / u.price, 0, 1) : 1;
+  },
+
+  /** The next still-locked milestone evolution form — the height-earned reward
+   *  that drives the always-visible "Ascent" near-miss bar on this screen.
+   *  Returns null only when every form is already evolved. */
+  nextForm(): { name: string; c: string; t: string; h: number; frac: number; gap: number } | null {
+    for (const s of MILESTONE_SKINS) {
+      if (Owned.includes(s.id)) continue;
+      const h = (s.req?.value as number) ?? 0;
+      return {
+        name: s.name, c: s.c, t: s.t, h,
+        frac: clamp(Profile.best / h, 0, 1),
+        gap: Math.max(0, h - Profile.best),
+      };
+    }
+    return null;
+  },
+
+  /** The always-visible climb visualization: a slim vertical rail down the left
+   *  margin (the game's natural axis). It shows, at a glance, how high you've
+   *  climbed (the lit frontier to your best), where THIS run reached (an animated
+   *  marker that rises on every death), every evolution form as a notch (earned =
+   *  bright in its colour, locked = dim), and the next reward as a pulsing glow
+   *  just above. Tapping anywhere on the rail expands the full tower. */
+  ascentRail(open: () => void): void {
+    const { ctx, W, H } = view;
+    const rx = Math.max(15, W * 0.05);
+    const yBot = H * 0.90;
+    const yTop = H * 0.135;
+    const span = yBot - yTop;
+    const forms = MILESTONE_SKINS;
+    const TOP = (forms[forms.length - 1].req?.value as number) || forms.length * 100;
+    const Y = (h: number): number => yBot - (clamp(h, 0, TOP) / TOP) * span;
+    const sk = skin();
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // background spine
+    ctx.strokeStyle = 'rgba(255,255,255,.10)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rx, yBot);
+    ctx.lineTo(rx, yTop);
+    ctx.stroke();
+
+    // lit frontier — how high you've ever climbed (your best), dim
+    ctx.strokeStyle = hexA(sk.c, 0.3);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rx, yBot);
+    ctx.lineTo(rx, Y(Profile.best));
+    ctx.stroke();
+
+    // THIS run's climb — a bright line that animates rising on every death
+    const e = 1 - Math.pow(1 - clamp((this.t - 0.15) / 1.1, 0, 1), 3);
+    const my = Y(this.d.h * e);
+    ctx.strokeStyle = sk.c;
+    ctx.shadowColor = sk.c;
+    ctx.shadowBlur = glowFX(10);
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(rx, yBot);
+    ctx.lineTo(rx, my);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // evolution-form notches (earned bright, locked dim, next one pulsing)
+    const nextId = (forms.find((s) => !Owned.includes(s.id)) || {}).id;
+    for (const s of forms) {
+      const h = (s.req?.value as number) || 0;
+      const y = Y(h);
+      if (s.id === nextId) {
+        const pulse = 0.5 + 0.5 * Math.sin(this.t * 4);
+        ctx.fillStyle = s.c;
+        ctx.shadowColor = s.c;
+        ctx.shadowBlur = glowFX(8 + pulse * 9);
+        ctx.beginPath();
+        ctx.arc(rx, y, 4.5 + pulse * 1.6, 0, TAU);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else if (Owned.includes(s.id)) {
+        ctx.fillStyle = hexA(s.c, 0.9);
+        ctx.beginPath();
+        ctx.arc(rx, y, 2.8, 0, TAU);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,.16)';
+        ctx.beginPath();
+        ctx.arc(rx, y, 2.4, 0, TAU);
+        ctx.fill();
+      }
+    }
+
+    // "you are here" marker for this run (a small chevron beside the rail)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(rx + 6, my);
+    ctx.lineTo(rx + 12, my - 4);
+    ctx.lineTo(rx + 12, my + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // whole rail taps through to the full climb tower
+    btn('ascrail', 0, yTop - 12, rx + 24, span + 24, open);
   },
 
   /** Closest-to-earned, still-locked skill-gated cosmetic, as a one-line carrot.
@@ -312,6 +419,15 @@ export const Result = {
     // one compact highlight line (vault > medals > achievement)
     const hl = this.highlightLine();
     if (hl) text(hl[0], W / 2, H * 0.315, 13, hl[1], 800, 6);
+    // Shared Ascent state: the next still-locked form (drives the bottom button's
+    // tease), any form earned THIS run, and the closure used to expand into the
+    // full climb tower (tapping the always-visible edge rail or the button).
+    const nf = this.nextForm();
+    const justForm = d.claimedUnlocks.find((nm) => MILESTONE_SKINS.some((s) => s.name === nm)) ?? null;
+    const openTower = (): void => { openAscent(d.h, justForm); state.scene = 'ascent'; };
+    // The climb is shown immediately as a slim vertical rail down the left margin —
+    // not hidden behind a tap. (Registered before the full-screen replay catch-all.)
+    this.ascentRail(openTower);
     let by = H * 0.36;
     for (let i = 0; i < this.bars.length; i++) {
       const b = this.bars[i];
@@ -421,12 +537,14 @@ export const Result = {
       py += ph + 12;
     }
 
-    // Bottom row: EVOLUTION · COLLECTION · MENU. The Evolution button shows the
-    // milestone-character progress and glows when a new form was earned this run.
+    // Bottom row: ASCENT · SHOP · MENU. The Ascent button opens the climb tower
+    // (how far you came + what waits above). It glows green when a new form was
+    // earned this run, and pulses amber as a near-miss tease when the run ended
+    // close to the next still-locked form — driving the "one more run" tap.
     const g3 = 9;
     const third = (pw - g3 * 2) / 3;
-    const evoEarned = MILESTONE_SKINS.reduce((n, s) => n + (Owned.includes(s.id) ? 1 : 0), 0);
-    const newEvo = d.claimedUnlocks.some((nm) => MILESTONE_SKINS.some((s) => s.name === nm));
+    const newEvo = !!justForm;
+    const closeToForm = !newEvo && !!nf && nf.gap > 0 && nf.gap <= 120;
     rr(px, py, third, 46, 12);
     ctx.fillStyle = 'rgba(20,16,48,.7)';
     ctx.fill();
@@ -434,15 +552,21 @@ export const Result = {
       ctx.strokeStyle = '#9be35a';
       ctx.shadowColor = '#9be35a';
       ctx.shadowBlur = 12 + Math.sin(this.t * 5) * 6;
+    } else if (closeToForm) {
+      ctx.strokeStyle = '#ffe39b';
+      ctx.shadowColor = '#ffd24a';
+      ctx.shadowBlur = 10 + Math.sin(this.t * 5) * 5;
     } else {
       ctx.strokeStyle = 'rgba(255,255,255,.12)';
     }
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.shadowBlur = 0;
-    text('EVOLUTION', px + third / 2, py + 17, 11, newEvo ? '#9be35a' : '#cdb4ff', 800, newEvo ? 4 : 0);
-    text(evoEarned + '/' + MILESTONE_SKINS.length, px + third / 2, py + 32, 9.5, '#9fb0e0', 700, 0);
-    btn('revo', px, py, third, 46, () => { openEvo(); state.scene = 'evo'; });
+    text('ASCENT', px + third / 2, py + 17, 11,
+      newEvo ? '#9be35a' : closeToForm ? '#ffe39b' : '#cdb4ff', 800, (newEvo || closeToForm) ? 4 : 0);
+    text(closeToForm ? '↑ ' + nf!.gap + ' m' : nf ? 'next form ↑' : 'MAXED',
+      px + third / 2, py + 32, 9.5, closeToForm ? '#ffe39b' : '#9fb0e0', 700, 0);
+    btn('revo', px, py, third, 46, openTower);
 
     const cx2 = px + third + g3;
     rr(cx2, py, third, 46, 12);

@@ -1,0 +1,23 @@
+/* =========================================================================
+   Responsive overrides (≤ 760px)
+   ========================================================================= */
+@media (max-width: 760px) {
+  /* Layout */
+  .hero            { grid-template-columns: 1fr; }
+  .action-row      { grid-template-columns: 1fr; }
+  .play-btn        { font-size: 22px; padding: 18px 36px; justify-content: center; }
+  .title           { font-size: 78px; }
+  .score-value     { font-size: 32px; }
+  .banner-main     { font-size: 80px; }
+  .pause-title     { font-size: 60px; }
+  .results-title   { font-size: 52px; }
+  #medals-layer    { width: 280px; }
+
+  /* Sim ribbon */
+  #activity-river           { display: none; }
+  .pressure-modal           { padding: 18px; }
+  .dp-grid                  { grid-template-columns: 1fr; }
+  .dp-title                 { font-size: 34px; }
+  #system-progress-chip     { display: none; }
+  .pressure-summary         { grid-template-columns: repeat(2, 1fr); }
+}

@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&family=JetBrains+Mono:wght@400;500;700;800;900&family=Outfit:wght@400;500;700&display=swap');
+
+/* =========================================================================
+   RICOCHET — Design tokens
+   ========================================================================= */
+:root {
+  /* Surfaces */
+  --bg-0: #0a0911;
+  --bg-1: #0f0e17;
+  --bg-2: #15131f;
+  --bg-3: #1c1929;
+  --bg-glass: rgba(20, 18, 30, 0.65);
+  --line: rgba(255,255,255,0.07);
+  --line-strong: rgba(255,255,255,0.14);
+
+  /* Text */
+  --text-0: #ffffff;
+  --text-1: #ece8f5;
+  --text-2: #9892ad;
+  --text-3: #5b5670;
+
+  /* Accents */
+  --lime: #c6ff00;
+  --lime-soft: rgba(198,255,0,0.18);
+  --mag: #ff2d75;
+  --mag-soft: rgba(255,45,117,0.18);
+  --amber: #ffb836;
+  --amber-soft: rgba(255,184,54,0.18);
+  --ice: #7dd3fc;
+  --ice-soft: rgba(125,211,252,0.18);
+  --violet: #b18cff;
+
+  /* Tier colors for medals */
+  --t-bronze: #d68352;
+  --t-silver: #cfd6e0;
+  --t-gold:   #ffcc4d;
+  --t-plat:   #92e9ff;
+  --t-mythic: #ff6ab8;
+
+  /* Geometry */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 22px;
+
+  /* Easing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+}

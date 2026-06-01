@@ -1,4 +1,4 @@
-export type Scene = 'home' | 'play' | 'over' | 'shop' | 'evo';
+export type Scene = 'home' | 'play' | 'over' | 'shop' | 'ascent';
 
 export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike' | 'decay';
 

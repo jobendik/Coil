@@ -8,7 +8,7 @@ import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
 import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
 import { renderPlay, setZenExitHandler } from './scenes/play';
 import { renderShop, shopDown, shopMove, shopUp, shopResetScroll } from './scenes/shop';
-import { renderEvo, evoDown, evoMove, evoUp } from './scenes/evo';
+import { renderAscent, ascentDown, ascentMove, ascentUp, setAscentReplay, openAscent } from './scenes/ascent';
 import { ac, loadSamples } from './core/audio';
 import { Music } from './core/music';
 import { CG } from './core/cg';
@@ -77,6 +77,8 @@ setZenExitHandler(() => endRun());
 // Result PLAY AGAIN → replay the SAME mode (daily/zen preserved), ad-gated.
 setReplayHandler(() => requestReplay(state.G?.daily ?? false, state.G?.zen ?? false));
 setReviveHandler(requestRevive);
+// Ascent PLAY AGAIN → same as the result-screen replay (mode preserved, ad-gated).
+setAscentReplay(() => requestReplay(state.G?.daily ?? false, state.G?.zen ?? false));
 
 // Ad lifecycle pauses the game loop so updates don't run behind the overlay.
 CG.bindPauseHook((p) => {
@@ -120,10 +122,10 @@ function onDown(e: PointerEvent): void {
   inputLock = true;
   setTimeout(() => { inputLock = false; }, 40);
   const { x, y } = pos(e);
-  // Evolution panel uses horizontal swipe-to-scroll: defer the button hit-test
+  // Ascent panel uses vertical drag-to-scroll: defer the button hit-test
   // to pointerup so we can tell a tap (equip) from a drag (scroll).
-  if (state.scene === 'evo') {
-    evoDown(x);
+  if (state.scene === 'ascent') {
+    ascentDown(y);
     return;
   }
   // Shop grid scrolls vertically: defer the hit-test to pointerup so a drag scrolls
@@ -143,18 +145,18 @@ function onDown(e: PointerEvent): void {
 }
 
 view.cv.addEventListener('pointerdown', onDown, { passive: false });
-view.cv.addEventListener('pointercancel', () => { inputLock = false; evoUp(); shopUp(); }, { passive: false });
+view.cv.addEventListener('pointercancel', () => { inputLock = false; ascentUp(); shopUp(); }, { passive: false });
 view.cv.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// Evolution panel (horizontal) and Shop grid (vertical) both drag-to-scroll: track
-// movement, and on release treat a negligible move as a tap (run the hit-test there).
+// Ascent panel and Shop grid both vertically drag-to-scroll: track movement,
+// and on release treat a negligible move as a tap (run the hit-test there).
 view.cv.addEventListener('pointermove', (e) => {
-  if (state.scene === 'evo') evoMove(pos(e).x);
+  if (state.scene === 'ascent') ascentMove(pos(e).y);
   else if (state.scene === 'shop') shopMove(pos(e).y);
 }, { passive: true });
 view.cv.addEventListener('pointerup', (e) => {
   const { x, y } = pos(e);
-  if (state.scene === 'evo') { if (evoUp()) hitButtons(x, y); }
+  if (state.scene === 'ascent') { if (ascentUp()) hitButtons(x, y); }
   else if (state.scene === 'shop') { if (shopUp()) hitButtons(x, y); }
 }, { passive: false });
 
@@ -258,8 +260,8 @@ function frame(now: number): void {
     Result.render();
   } else if (state.scene === 'shop') {
     renderShop();
-  } else if (state.scene === 'evo') {
-    renderEvo(dt);
+  } else if (state.scene === 'ascent') {
+    renderAscent(dt);
   }
   ctx.restore();
 
@@ -345,6 +347,9 @@ if (import.meta.env.DEV) {
       return { x: pl.wx, y: view.H - (pl.wy - state.G.cameraY), r: pl.r };
     },
     getScene: () => state.scene,
+    setHeight: (h: number) => { if (state.G) { state.G.height = h; state.G.maxY = state.G.player.wy; } },
+    setBest: (h: number) => { Profile.best = h; },
+    openAscent: (h: number, earned: string | null = null) => { openAscent(h, earned); state.scene = 'ascent'; },
     // perf instrumentation: force an FX tier and microbenchmark the pure render
     // cost (one play frame rendered N times). Sidesteps headless rAF throttling —
     // pair with CDP CPU throttling to emulate a low-end phone. Returns ms total.
