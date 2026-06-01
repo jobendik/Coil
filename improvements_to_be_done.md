@@ -34,14 +34,24 @@ decay gates, `dist-cg` ~41 KB gz JS, source map dropped):
   without relying on hue.
 - **6.5 Animated shop previews — DONE.** Trails flow/twinkle and accessory orbits
   rotate / auras breathe in the grid (drives purchase desire).
+- **4.1 Progression-pacing audit — DONE.** Added `scripts/pacing-audit.test.ts`
+  (CI-checked, like gate-honesty): maps every unlock vs the real coin economy and
+  simulates a plateauing new player. Findings: early game is dense (unlocks at runs
+  1,1,2,4,5,5,6,7,8,9…), even 100 m evolution ladder, longest mid-progression gap
+  2 runs. **Bug found + fixed:** `shop.buy()` had `if (item.req) return`, so the
+  coin-priced skill-route items (Void/Prism/Prism Ribbon/Aurora/Star Lace) were
+  *permanently locked* for anyone who couldn't hit the height/combo/streak —
+  contradicting config's "price is the fallback". Now **dual-route**: reach the req
+  for free, or buy with coins (shop shows an "or ◎N" chip). Price-0 items (evo1-12,
+  Nova, Crown, Visor) stay pure-skill prestige by design.
 - **5.1 Test runner — CORRECTION:** it is **not** broken. `npm test` passes after
   `npm install` (esbuild is a devDependency); CI runs `npm ci` first. The honest-gate
   property is testable in CI today (0 violations across ~890k lit angles, incl. decay).
 
 Still open (asset/external, can't be done in-repo): **Tier 0** thumbnail / preview /
 screenshots / on-platform QA, plus the actual SFX/music files (drop-in paths ready).
-Remaining code items are long-tail/post-launch only (4.1 pacing audit, 4.3 weekly
-rotation, 6.4 what's-new) — see their tiers below.
+Remaining code items are post-launch only (4.3 weekly rotation, 6.4 what's-new) —
+best driven by live telemetry — see their tiers below.
 
 ---
 

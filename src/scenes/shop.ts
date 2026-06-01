@@ -66,7 +66,12 @@ function accent(tab: Tab, item: Item): string {
 }
 
 function buy(tab: Tab, item: Item): void {
-  if (item.req) return;   // skill-gated items are earned, never bought
+  // Pure-skill items (a `req` and NO price) are earned only — never buyable.
+  // Items with BOTH a req and a price>0 are dual-route: reach the req for free,
+  // OR buy with coins as the fallback (config calls the price exactly that). This
+  // keeps skill-plateaued players progressing instead of hitting a dead zone once
+  // the height-gated track outruns them (see scripts/pacing-audit.test.ts §4.1).
+  if (item.req && item.price <= 0) return;
   if (Profile.coins < item.price) return;
   Profile.coins -= item.price;
   Store.set('coil_coins', Profile.coins);
@@ -473,11 +478,13 @@ export function renderShop(): void {
       text('TAP TO EQUIP', pcx, y + 117, 10.5, '#9fb0e0', 700, 0);
       btn('eq' + shopTab + item.id, x, y, cw, ch, () => equipFor(shopTab, item.id));
     } else if (item.req) {
-      // SKILL-GATED — show the requirement + a tiny progress bar, not a price.
-      // (Earned automatically when met; never buyable with coins.)
+      // SKILL ROUTE — show the requirement + progress bar. If the item ALSO has a
+      // price it's DUAL-ROUTE: reach the req for free, or buy with coins (a small
+      // "or ◎N" chip, tappable when affordable). Price-0 items stay earn-only.
       const frac = reqFraction(item.req);
-      text(reqLabel(item.req), pcx, y + 110, 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
-      text(reqProgress(item.req), pcx, y + 123, 8.5, '#8a93bf', 700, 0);
+      const dual = item.price > 0;
+      text(reqLabel(item.req), pcx, y + (dual ? 103 : 110), 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
+      text(reqProgress(item.req), pcx, y + (dual ? 115 : 123), 8.5, '#8a93bf', 700, 0);
       const bw2 = cw * 0.6;
       const bx2 = pcx - bw2 / 2;
       rr(bx2, y + ch - 12, bw2, 3, 1.5);
@@ -486,6 +493,22 @@ export function renderShop(): void {
       rr(bx2, y + ch - 12, bw2 * frac, 3, 1.5);
       ctx.fillStyle = rar.c;
       ctx.fill();
+      if (dual) {
+        const can2 = Profile.coins >= item.price;
+        const label = 'or ◎ ' + item.price.toLocaleString();
+        ctx.save();
+        ctx.font = "800 9.5px 'Sora', sans-serif";
+        const tw = ctx.measureText(label).width;
+        const chipW = tw + 16;
+        const chipX = pcx - chipW / 2;
+        const chipY = y + 124;
+        rr(chipX, chipY, chipW, 16, 8);
+        ctx.fillStyle = can2 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.05)';
+        ctx.fill();
+        ctx.restore();
+        text(label, pcx, chipY + 8, 9.5, can2 ? '#ffe39b' : '#7e88b5', 800, 0);
+        if (can2) btn('buy' + shopTab + item.id, x, y, cw, ch, () => buy(shopTab, item));
+      }
     } else {
       // price chip
       const priceTxt = item.price.toLocaleString();
