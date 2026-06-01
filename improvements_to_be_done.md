@@ -29,13 +29,19 @@ decay gates, `dist-cg` ~41 KB gz JS, source map dropped):
 - **2.1 First-session home — DONE.** Minimal home (logo + creature + PLAY) until run 1.
 - **3.2 / 3.3 — DONE.** Lifetime constellation count surfaced on home; menu creature blinks.
 - **5.5 Source-map hygiene — DONE.** Production build no longer emits the `.map`.
+- **6.3 Colour-blind gate — DONE.** A home-screen toggle delineates the perfect
+  window by SHAPE (white boundary + centre ticks) + forced white, so it's readable
+  without relying on hue.
+- **6.5 Animated shop previews — DONE.** Trails flow/twinkle and accessory orbits
+  rotate / auras breathe in the grid (drives purchase desire).
 - **5.1 Test runner — CORRECTION:** it is **not** broken. `npm test` passes after
   `npm install` (esbuild is a devDependency); CI runs `npm ci` first. The honest-gate
   property is testable in CI today (0 violations across ~890k lit angles, incl. decay).
 
 Still open (asset/external, can't be done in-repo): **Tier 0** thumbnail / preview /
-screenshots / on-platform QA. Lower-priority code items remain (6.3 colour-blind
-palette, 6.5 animated shop previews, 4.x long-tail) — see their tiers below.
+screenshots / on-platform QA, plus the actual SFX/music files (drop-in paths ready).
+Remaining code items are long-tail/post-launch only (4.1 pacing audit, 4.3 weekly
+rotation, 6.4 what's-new) — see their tiers below.
 
 ---
 

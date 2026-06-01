@@ -151,11 +151,14 @@ function drawTrailPreview(x: number, y: number, w: number, item: Trail): void {
   const { ctx } = view;
   const c = item.c || skin().c;
   const t = item.t || skin().t;
+  // Shop is re-rendered every frame; performance.now() gives the previews life
+  // without needing a run's G.t (stubbed to 0 in tests → static there).
+  const tm = performance.now() / 1000;
   ctx.save();
   ctx.lineCap = 'round';
   if (item.style === 'rainbow') {
     for (let i = 0; i < 7; i++) {
-      ctx.strokeStyle = `hsl(${i * 45},90%,65%)`;
+      ctx.strokeStyle = `hsl(${(i * 45 + tm * 80) % 360},90%,65%)`;   // hue cycles
       ctx.globalAlpha = 0.8;
       ctx.lineWidth = 5 - i * 0.35;
       ctx.beginPath();
@@ -168,7 +171,7 @@ function drawTrailPreview(x: number, y: number, w: number, item: Trail): void {
     ctx.fillStyle = c; ctx.strokeStyle = t; ctx.shadowColor = c; ctx.shadowBlur = glowFX(8); ctx.lineWidth = 1.4;
     for (let i = 0; i < 8; i++) {
       const px = x - w / 2 + (i * w) / 7;
-      const py = y + Math.sin(i * 0.9) * 8;
+      const py = y + Math.sin(i * 0.9 + tm * 2.2) * 8;                // undulating flow
       ctx.globalAlpha = 0.35 + i * 0.08;
       ctx.beginPath();
       ctx.arc(px, py, bubbles ? 5 : 3 + i * 0.2, 0, TAU);
@@ -179,13 +182,14 @@ function drawTrailPreview(x: number, y: number, w: number, item: Trail): void {
     ctx.fillStyle = t; ctx.shadowColor = t; ctx.shadowBlur = glowFX(10);
     for (let i = 0; i < 7; i++) {
       const px = x - w / 2 + (i * w) / 6;
-      const py = y + Math.sin(i) * 7;
-      ctx.save(); ctx.translate(px, py); ctx.rotate(i);
+      const py = y + Math.sin(i + tm * 2) * 7;
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(tm * 4 + i);             // twinkle
+      ctx.save(); ctx.translate(px, py); ctx.rotate(i + tm * 2);
       ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(2, 0); ctx.lineTo(0, 6); ctx.lineTo(-2, 0); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
   } else {
-    ctx.strokeStyle = c; ctx.shadowColor = c; ctx.shadowBlur = glowFX(10);
+    ctx.strokeStyle = c; ctx.shadowColor = c; ctx.shadowBlur = glowFX(10 + Math.sin(tm * 3) * 4);
     ctx.lineWidth = item.style === 'comet' ? 8 : 5;
     ctx.beginPath();
     ctx.moveTo(x - w / 2, y + 8);
@@ -225,14 +229,15 @@ function drawWorldPreview(x: number, y: number, w: number, h: number, item: Worl
   ctx.restore();
 }
 
-/* accessory preview — a neutral character orb wearing the accessory, drawn
-   statically (the shop can be open with no active run, so it can't use G.t). */
+/* accessory preview — a neutral character orb wearing the accessory. Animated off
+   performance.now() (the shop has no run G.t, but is redrawn every frame). */
 function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
   const { ctx } = view;
   const sk = skin();
   const r = 15;
   const c = item.c || sk.c;
   const tcol = item.t || sk.t;
+  const tm = performance.now() / 1000;
   ctx.save();
   // base orb
   ctx.fillStyle = sk.c;
@@ -254,7 +259,7 @@ function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
   if (item.kind === 'orbit') {
     const n = item.count || 3;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU - Math.PI / 2;
+      const a = (i / n) * TAU - Math.PI / 2 + tm * 1.1;     // satellites orbit
       const sx = x + Math.cos(a) * (r + 10);
       const sy = y + Math.sin(a) * (r + 10) * 0.66;
       if (item.shape === 'star') {
@@ -280,10 +285,10 @@ function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
       ctx.ellipse(x, y - r - 6, r * 0.95, r * 0.34, 0, 0, TAU);
       ctx.stroke();
     } else {
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(tm * 3);     // aura breathes
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(x, y, r + 7, 0, TAU);
+      ctx.arc(x, y, r + 7 + Math.sin(tm * 3) * 1.5, 0, TAU);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }

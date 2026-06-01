@@ -8,7 +8,7 @@ import { Pop } from '../core/particles';
 import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
 import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, mixHex, pcount, rand, text } from '../core/utils';
 import { btn } from '../core/ui';
-import { settings, setAimPreview, setMuted, setMusicMuted, setReducedMotion } from '../settings';
+import { settings, setAimPreview, setCbGate, setMuted, setMusicMuted, setReducedMotion } from '../settings';
 import { rr } from '../core/utils';
 import { CATCH_PAD, DAILY_MEDALS, DECAY_TIME, G_FALL, LAND_SQUASH, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
 
@@ -291,25 +291,43 @@ function drawGate(): void {
   const cx = n.wx;
   const cy = sY(n.wy);
   const sk = skin();
+  const cb = settings.cbGate;
+  const inPerfect = angDiff(pl.ang, sw.center) <= sw.tol;
   ctx.save();
-  // safe release band
-  ctx.strokeStyle = sk.c;
-  ctx.globalAlpha = 0.30;
-  ctx.lineWidth = 6;
   ctx.lineCap = 'round';
+  // safe release band — neutral grey in colour-blind mode so the perfect cue isn't hue-only
+  ctx.strokeStyle = cb ? 'rgba(198,208,235,0.9)' : sk.c;
+  ctx.globalAlpha = cb ? 0.22 : 0.30;
+  ctx.lineWidth = 6;
   ctx.beginPath();
   ctx.arc(cx, cy, ORBIT, sw.lo, sw.hi);
   ctx.stroke();
   // perfect band
-  const inPerfect = angDiff(pl.ang, sw.center) <= sw.tol;
   ctx.globalAlpha = inPerfect ? 1 : 0.85;
-  ctx.strokeStyle = inPerfect ? '#ffffff' : sk.t;
+  ctx.strokeStyle = (cb || inPerfect) ? '#ffffff' : sk.t;
   ctx.lineWidth = inPerfect ? 8 : 6;
-  ctx.shadowColor = inPerfect ? '#fff' : sk.t;
+  ctx.shadowColor = (cb || inPerfect) ? '#fff' : sk.t;
   ctx.shadowBlur = glowFX(inPerfect ? 16 : 8);
   ctx.beginPath();
   ctx.arc(cx, cy, ORBIT, sw.center - sw.tol, sw.center + sw.tol);
   ctx.stroke();
+  // COLOUR-BLIND aid: delineate the perfect window by SHAPE — white ticks crossing
+  // the ring at both edges + centre — so it reads without relying on hue at all.
+  if (cb) {
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = glowFX(6);
+    for (const a of [sw.center - sw.tol, sw.center, sw.center + sw.tol]) {
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(cx + c * (ORBIT - 9), cy + s * (ORBIT - 9));
+      ctx.lineTo(cx + c * (ORBIT + 9), cy + s * (ORBIT + 9));
+      ctx.stroke();
+    }
+  }
   ctx.restore();
 }
 
@@ -804,7 +822,7 @@ function drawComboFlash(): void {
   ctx.restore();
 }
 
-function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff', col: string): void {
+function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff' | 'cb', col: string): void {
   const { ctx } = view;
   ctx.save();
   rr(x, y, s, s, 10);
@@ -876,6 +894,15 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
       ctx.lineTo(cx + 9, cy - 9);
       ctx.stroke();
     }
+  } else if (icon === 'cb') {
+    // gate ring with edge + centre ticks = the colour-blind gate aid, in miniature
+    ctx.beginPath(); ctx.arc(cx, cy, 6.5, -1.05, 1.05); ctx.stroke();
+    for (const a of [-0.9, 0, 0.9]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4);
+      ctx.lineTo(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -901,6 +928,14 @@ export function drawTopToggles(): void {
   btn('motion', x3, top, s, s, () => setReducedMotion(!settings.reducedMotion));
   drawIconBtn(x3, top, s, settings.reducedMotion ? 'motionOff' : 'motion',
     settings.reducedMotion ? '#5b6488' : '#a76bff');
+  // Colour-blind gate toggle — accessibility, set-once. Only on the home screen:
+  // the in-play row sits beside the centred height HUD and a 5th icon would collide
+  // on narrow mobile, so the menu (which has room) owns this preference.
+  if (state.scene === 'home') {
+    const x4 = pad + 4 * (s + 8);
+    btn('cbgate', x4, top, s, s, () => setCbGate(!settings.cbGate));
+    drawIconBtn(x4, top, s, 'cb', settings.cbGate ? '#9be35a' : '#5b6488');
+  }
 }
 
 /* In-world "ghost goal" markers — a line you climb toward. Normal mode shows
