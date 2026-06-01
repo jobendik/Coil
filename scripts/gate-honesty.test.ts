@@ -18,7 +18,7 @@
    Run via `npm test`. Exits non-zero on any violation.
    ========================================================================= */
 import { state, resetRun } from '../src/game/state';
-import { genNode } from '../src/game/nodes';
+import { genNode, setRunSeed } from '../src/game/nodes';
 import { computeSweetZone } from '../src/game/physics';
 import { CATCH_PAD, G_FALL, LAUNCH, ORBIT, WALL } from '../src/config';
 import { view, initCanvas, resize } from '../src/core/canvas';
@@ -78,17 +78,19 @@ let failures = 0;
 const fail = (msg: string): void => { failures++; if (failures <= 20) console.error('  ✗ ' + msg); };
 
 function run(): void {
-  const SEEDS = 40;
-  const NODES_PER_SEED = 600;
+  const SEEDS = 120;
+  const NODES_PER_SEED = 700;
   let pairsChecked = 0;
   let litAnglesChecked = 0;
   let movingPairs = 0;
   let decayPairs = 0;
 
   for (let seed = 0; seed < SEEDS; seed++) {
-    // Use the seeded daily route generator deterministically via resetRun(true)
-    // would pull today's seed; instead drive genNode directly after a reset.
+    // Seed the generator deterministically so this proof is REPRODUCIBLE (it used
+    // to run on Math.random — a flaky, probabilistic check that could pass or fail
+    // run-to-run). resetRun(false) clears the seed, so re-seed right after it.
     resetRun(false);
+    setRunSeed((Math.imul(seed + 1, 0x9e3779b1)) >>> 0);
     const G = state.G;
     // grow a long route
     while (G.nodes.length < NODES_PER_SEED) genNode();

@@ -1045,11 +1045,13 @@ function drawMeters(): void {
       ctx.fill();
       ctx.shadowBlur = 0;
     }
+    ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = "700 9px 'Unbounded', sans-serif";
     ctx.fillStyle = G.overdrive >= 1 ? '#ffd24a' : '#7e88b5';
     ctx.fillText('OVERDRIVE', W / 2, my + 12);
+    ctx.restore();
   } else {
     const fp = clamp(G.frenzyT / G.frenzyMax, 0, 1);
     const fw = 170;
@@ -1138,7 +1140,6 @@ export function renderPlay(): void {
     }
     ctx.restore();
   }
-  drawGate();
   drawTrajectory();
   // MAGNET aura — a faint pulsing ring + reach indicator while active.
   if (G.magnetT > 0) {
@@ -1156,13 +1157,14 @@ export function renderPlay(): void {
     ctx.stroke();
     ctx.restore();
   }
-  drawPlayer();
   drawTutorialHand();
   Pop.draw();
   fxDrawWorld();
-  // Re-assert the interactive layer ABOVE the celebratory FX so a big confetti
-  // /coin/shock burst can never bury where to go or where you are. The effects
-  // themselves are untouched — only the layering guarantees readability.
+  // The interactive layer (beacon + gate + player) is drawn ONCE here, ABOVE the
+  // celebratory FX, so a confetti/coin/shock burst can never bury where to go or
+  // where you are. (It used to also be drawn before the FX, but that pass was fully
+  // overwritten by this one — wasting a draw and double-compositing the player's
+  // semi-transparent trail/tether/shield to a higher opacity than intended.)
   drawTargetBeacon();
   drawGate();
   drawPlayer();

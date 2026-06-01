@@ -75,6 +75,11 @@ export function genNode(): void {
   if (!easy && type === 'normal' && hm > DECAY_FROM_M && rnd() < 0.10 + diff * 0.07) {
     type = 'decay';
   }
+  // A MOVING predecessor slides the launch origin ±amp as it oscillates; keeping a
+  // TIGHT (small) gate reachable across that whole range is fragile (a narrow window
+  // where the gate momentarily can't be reached). Don't follow a moving node with a
+  // small one — use full radius, which the fairness/reachability checks keep honest.
+  if (type === 'small' && prev && prev.type === 'move') { type = 'normal'; r = 18; }
 
   // FAIRNESS: the player orbits prev and flings to this node. Guarantee the gate from prev
   // to here is comfortably hittable for EITHER arrival direction; if not, pull this node
@@ -118,6 +123,35 @@ export function genNode(): void {
     } // last resort: straight up, modest gap — always fair
     nx = clamp(bw, 52 + (type === 'move' ? mvAmp : 0), W - 52 - (type === 'move' ? mvAmp : 0));
     ny = by;
+    // Reachability GUARANTEE across the predecessor's FULL motion. The fairness loop
+    // scores the gate from prev's CENTRE, but a MOVING predecessor slides the launch
+    // origin ±amp as it oscillates — so a node fair at the centre can be unreachable
+    // at an extreme (a rare gate that "vanishes" as prev drifts; the gate is
+    // recomputed every ~2 frames from prev's live position). Verify the ACTUAL
+    // placement has a reachable gate (either direction) at several points across
+    // prev's oscillation; if not, snap straight up over prev, pulling the gap in
+    // until a real gate exists everywhere. (No RNG consumed — daily routes stay
+    // deterministic.) Closes the gate-honesty REACHABILITY gap for moving-pred nodes.
+    const pAmp = prev.type === 'move' ? (prev.amp ?? 0) : 0;
+    const pSamples = pAmp > 0
+      ? [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1].map((f) => f * pAmp)
+      : [0];
+    const reachAll = (wx: number, wy: number): boolean => {
+      const cand: Node = { wx, wy, r, type, baseX: wx, next: null, amp: mvAmp, spd: mvSpd || 1, ph: mvPh };
+      for (const o of pSamples) {
+        const piv: Node = { wx: pbx + o, wy: prev.wy, r: prev.r, type: 'normal', baseX: pbx + o, next: null };
+        if (gateWidth(piv, cand, 1) <= 0 && gateWidth(piv, cand, -1) <= 0) return false;
+      }
+      return true;
+    };
+    if (!reachAll(nx, ny)) {
+      const fbx = clamp(pbx, 52 + (type === 'move' ? mvAmp : 0), W - 52 - (type === 'move' ? mvAmp : 0));
+      for (let g = 110; g >= 70; g -= 12) {
+        nx = fbx;
+        ny = prev.wy + g;
+        if (reachAll(nx, ny)) break;
+      }
+    }
   }
 
   const node: Node = {

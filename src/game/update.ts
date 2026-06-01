@@ -58,7 +58,7 @@ export function update(dt: number): void {
     G.freezeT -= dt;
     if (G.freezeT > 0) return;
   }
-  Vault.tick(dt);
+  if (!G.zen) Vault.tick(dt);   // the Star Vault is real-mode progression — Zen must not grow it
   // FRENZY countdown — banks a top-up bonus with fanfare when it ends
   if (G.frenzyT > 0) {
     G.frenzyT -= dt;
@@ -465,8 +465,9 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
     const cx = n.wx;
     const cy = sY(n.wy);
     // STAR VAULT: catch a bonus node while on a high combo to claim the whole pot.
-    // Rare, skill-only — never a paid chance.
-    if (G.combo >= VAULT_WIN_COMBO && !G.jackpotHit) {
+    // Rare, skill-only — never a paid chance. Not winnable in Zen (the unkillable
+    // mode would otherwise farm the real-mode jackpot risk-free).
+    if (G.combo >= VAULT_WIN_COMBO && !G.jackpotHit && !G.zen) {
       G.jackpotHit = true;
       const won = Vault.win();
       G.potWon = won;
@@ -721,6 +722,7 @@ export function hit(cause: 'void' | 'fall' | 'spike' | 'collapse'): void {
     for (const n of G.nodes) {
       if (n.type === 'spike') continue;
       if (n === pl.lastReleased) continue;
+      if (n === pl.node) continue;   // never re-latch the node you just left — esp. a DECAY gate that just collapsed
       // Only count nodes ABOVE the rising void — saving you onto a doomed node is cruel.
       if (n.wy <= G.voidY + 30) continue;
       const d = Math.hypot(pl.wx - n.wx, pl.wy - n.wy);
