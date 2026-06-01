@@ -320,3 +320,41 @@ window.addEventListener('load', () => {
 
 void CG.init();
 startLoop();
+
+// Dev-only calibration hook: lets an automation harness (Playwright) drive the
+// canvas game into specific visual states for screenshot tuning, and read live
+// FPS. Tree-shaken out of production builds — import.meta.env.DEV is false there.
+if (import.meta.env.DEV) {
+  (window as unknown as { __coil?: unknown }).__coil = {
+    state,
+    view,
+    Profile,
+    startPlay: (daily = false, zen = false) => startPlay(daily, zen),
+    getFps: () => fps,
+    setPaused: (p: boolean) => { paused = p; },
+    setOverdrive: (v: number) => { if (state.G) state.G.overdrive = clamp(v, 0, 1); },
+    forceFrenzy: (t = 8) => { if (state.G) { state.G.frenzyT = t; state.G.frenzyMax = 8; } },
+    addCoins: (n: number) => { if (state.G) state.G.coins += n; },
+    setCombo: (c: number) => { if (state.G) { state.G.combo = c; state.G.maxCombo = Math.max(state.G.maxCombo, c); } },
+    setVoidGap: (px: number) => { if (state.G) state.G.voidY = state.G.player.wy - px; },
+    fling: () => { if (state.scene === 'play' && !state.G.dead) release(); },
+    forceEnd: () => { if (state.scene === 'play') endRun(); },
+    getPlayer: () => {
+      if (!state.G) return null;
+      const pl = state.G.player;
+      return { x: pl.wx, y: view.H - (pl.wy - state.G.cameraY), r: pl.r };
+    },
+    getScene: () => state.scene,
+    // perf instrumentation: force an FX tier and microbenchmark the pure render
+    // cost (one play frame rendered N times). Sidesteps headless rAF throttling —
+    // pair with CDP CPU throttling to emulate a low-end phone. Returns ms total.
+    setFx: (lvl: 'low' | 'medium' | 'high') => { fx.level = lvl; },
+    getFx: () => fx.level,
+    benchRender: (iters = 120) => {
+      if (state.scene !== 'play') return -1;
+      const t0 = performance.now();
+      for (let i = 0; i < iters; i++) renderPlay();
+      return performance.now() - t0;
+    },
+  };
+}

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>COIL — Audio Manager</title>
+<style>
+  :root{
+    --bg:#0a0720; --bg2:#140e33; --panel:#181238; --panel2:#1f1746;
+    --line:rgba(255,255,255,.08); --txt:#e7ecff; --dim:#9fb0e0; --dim2:#6b76a8;
+    --cyan:#2ff3e0; --pink:#ff4d8d; --gold:#ffd24a; --lime:#9be35a; --violet:#a76bff;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 600px at 50% -10%,#231653,#0a0720 60%);
+    color:var(--txt); font:14px/1.45 'Segoe UI',system-ui,sans-serif;
+    padding:0 0 120px;
+  }
+  header{
+    position:sticky; top:0; z-index:20; backdrop-filter:blur(8px);
+    background:rgba(10,7,32,.82); border-bottom:1px solid var(--line);
+    padding:14px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  .logo{font-weight:800; letter-spacing:2px; font-size:20px;
+    background:linear-gradient(90deg,var(--cyan),var(--violet),var(--pink));
+    -webkit-background-clip:text; background-clip:text; color:transparent}
+  .logo small{font-weight:600; letter-spacing:1px; color:var(--dim); -webkit-text-fill-color:var(--dim); font-size:11px}
+  button,.btn{
+    font:inherit; cursor:pointer; border:1px solid var(--line); color:var(--txt);
+    background:var(--panel2); border-radius:9px; padding:8px 14px; transition:.12s;
+  }
+  button:hover{border-color:var(--cyan); color:#fff}
+  button:active{transform:translateY(1px)}
+  .primary{background:linear-gradient(90deg,var(--cyan),#1bc6b6); color:#04120f; font-weight:700; border:none}
+  .ghost{background:transparent}
+  .pill{font-size:12px; color:var(--dim); padding:4px 10px; border:1px solid var(--line); border-radius:999px}
+  .tabs{display:flex; gap:6px; margin-left:auto}
+  .tab{padding:8px 16px; border-radius:9px 9px 0 0; border:1px solid transparent; color:var(--dim); background:transparent}
+  .tab.active{color:#fff; background:var(--panel); border-color:var(--line); border-bottom-color:transparent}
+  main{max-width:1100px; margin:0 auto; padding:22px 20px}
+  .hint{color:var(--dim); font-size:13px; margin:0 0 18px}
+  .empty{text-align:center; color:var(--dim); padding:60px 20px}
+  .empty .big{font-size:48px; margin-bottom:10px}
+  .grid{display:grid; gap:12px}
+  .card{
+    background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px;
+  }
+  .row{display:flex; align-items:center; gap:12px}
+  .row.wrap{flex-wrap:wrap}
+  .spacer{flex:1}
+  .name{font-weight:700}
+  .meta{font-size:12px; color:var(--dim2)}
+  .tag{font-size:10px; font-weight:700; letter-spacing:.5px; padding:3px 8px; border-radius:999px; text-transform:uppercase}
+  .tag.curated{background:rgba(255,210,74,.14); color:var(--gold)}
+  .tag.conv{background:rgba(47,243,224,.13); color:var(--cyan)}
+  .tag.var{background:rgba(167,107,255,.16); color:var(--violet)}
+  .tag.missing{background:rgba(255,77,141,.16); color:var(--pink)}
+  .iconbtn{width:34px; height:34px; padding:0; display:inline-grid; place-items:center; border-radius:8px; font-size:15px}
+  .iconbtn.play.playing{background:var(--cyan); color:#04120f; border-color:transparent}
+  .seek{appearance:none; height:5px; border-radius:3px; background:var(--line); outline:none; flex:1; min-width:80px}
+  .seek::-webkit-slider-thumb{appearance:none; width:13px; height:13px; border-radius:50%; background:var(--cyan); cursor:pointer}
+  .sub{margin-top:12px; border-top:1px dashed var(--line); padding-top:12px}
+  details{margin-top:10px}
+  summary{cursor:pointer; color:var(--dim); font-size:13px; user-select:none}
+  summary:hover{color:#fff}
+  .cands{display:grid; gap:6px; margin-top:10px}
+  .cand{display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:8px; background:rgba(255,255,255,.03)}
+  .cand:hover{background:rgba(255,255,255,.06)}
+  .cand .cn{flex:1; font-size:13px}
+  .params{display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap}
+  .params label{font-size:11px; color:var(--dim); display:flex; gap:4px; align-items:center}
+  .params input{width:58px; background:var(--bg); border:1px solid var(--line); color:var(--txt); border-radius:6px; padding:4px 6px; font:inherit}
+  .cmd{margin-top:10px; background:#06040f; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font:12px/1.5 ui-monospace,Consolas,monospace; color:#b9c4ef; white-space:pre-wrap; word-break:break-all; position:relative}
+  .cmd button{position:absolute; top:8px; right:8px; padding:4px 9px; font-size:11px}
+  .section-title{font-size:12px; letter-spacing:1px; color:var(--dim2); text-transform:uppercase; margin:24px 0 10px}
+  .warn{color:var(--gold)} .ok{color:var(--lime)} .bad{color:var(--pink)}
+  .prompt{background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:0 0 14px}
+  .prompt h4{margin:0 0 4px; color:var(--cyan)}
+  .prompt .when{font-size:12px; color:var(--dim); margin-bottom:8px}
+  .prompt pre{margin:0; white-space:pre-wrap; font:12px/1.5 ui-monospace,Consolas,monospace; color:#cdd6f5; background:#06040f; padding:10px; border-radius:6px; position:relative}
+  .prompt pre button{position:absolute; top:6px; right:6px; padding:3px 8px; font-size:11px}
+  /* now playing bar */
+  #np{position:fixed; left:0; right:0; bottom:0; z-index:30; background:rgba(15,11,40,.96);
+    backdrop-filter:blur(10px); border-top:1px solid var(--line); padding:12px 20px;
+    display:flex; align-items:center; gap:14px; transform:translateY(120%); transition:.2s}
+  #np.show{transform:none}
+  #np .npname{font-weight:700; min-width:120px; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  #np .tog{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim)}
+  .hidden{display:none!important}
+  a.link{color:var(--cyan); text-decoration:none} a.link:hover{text-decoration:underline}
+  code.k{background:rgba(255,255,255,.06); padding:1px 6px; border-radius:5px; font-family:ui-monospace,Consolas,monospace; color:var(--cyan)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">COIL <small>AUDIO MANAGER</small></div>
+  <button class="primary" id="pick">📂 Load project folder…</button>
+  <span class="pill" id="status">No folder loaded</span>
+  <input type="file" id="dir" webkitdirectory directory multiple class="hidden" />
+  <div class="tabs">
+    <button class="tab active" data-tab="music">🎵 Soundtracks</button>
+    <button class="tab" data-tab="sfx">🔊 SFX</button>
+    <button class="tab" data-tab="prompts">📝 Suno Prompts</button>
+  </div>
+</header>
+
+<main>
+  <!-- MUSIC -->
+  <section id="tab-music">
+    <p class="hint">Background tracks the game crossfades between each run (<code class="k">background_music.mp3</code> +
+      anything in <code class="k">src/assets/music/</code>). Audition them, check durations &amp; size against the
+      mobile budget, and test loop seams. Drop new <code class="k">.mp3</code>/<code class="k">.ogg</code> files into
+      <code class="k">src/assets/music/</code> and they auto-join the rotation.</p>
+    <div id="music-body"></div>
+  </section>
+
+  <!-- SFX -->
+  <section id="tab-sfx" class="hidden">
+    <p class="hint">Every game event and its current sample. Expand an event to audition the candidate library
+      (<code class="k">sfxCandidates/</code>), tweak the trim, and copy the exact <b>ffmpeg</b> command to swap it.
+      <code class="k">click</code>/<code class="k">tick</code> support multiple numbered variants (played at random).</p>
+    <input id="sfxfilter" placeholder="Filter events…" style="width:100%;max-width:320px;margin-bottom:14px;background:var(--bg);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:8px 12px;font:inherit" />
+    <div id="sfx-body"></div>
+  </section>
+
+  <!-- PROMPTS -->
+  <section id="tab-prompts" class="hidden">
+    <p class="hint">Generation prompts for the music rotation (Suno: toggle <b>Instrumental ON</b>, ~2 min, 120–132 BPM,
+      compatible keys so crossfades aren't jarring). Save into <code class="k">src/assets/music/</code> with the suggested filename.</p>
+    <div id="prompts-body"></div>
+  </section>
+</main>
+
+<!-- NOW PLAYING -->
+<div id="np">
+  <button class="iconbtn" id="np-toggle">⏸</button>
+  <span class="npname" id="np-name">—</span>
+  <span class="meta" id="np-time" style="min-width:88px">0:00 / 0:00</span>
+  <input type="range" class="seek" id="np-seek" value="0" min="0" max="1000" />
+  <label class="tog"><input type="checkbox" id="np-loop" /> loop</label>
+  <label class="tog">vol <input type="range" id="np-vol" min="0" max="1" step="0.01" value="0.85" style="width:80px"></label>
+  <button class="iconbtn" id="np-stop">⏹</button>
+</div>
+
+<audio id="player"></audio>
+
+<script>
+/* ---------------- event config (mirrors src/core/audio.ts + sfx_assets_used.md) ---------------- */
+const EVENTS = [
+  // key, label, fires-on, candidate folder, provenance, trim {t,st,d} (null = curated/as-is)
+  {k:'perfect', g:'Core', label:'Perfect fling', fires:'perfect-window release (pitch ↑ w/ combo)', folder:'03_perfect', prov:'conv', trim:{t:0.70,st:0.45,d:0.25}},
+  {k:'combo',   g:'Core', label:'Combo tier-up', fires:'x3 / x5 / x8 / x12 milestone', folder:'07_milestone', prov:'conv', trim:{t:0.95,st:0.60,d:0.35}},
+  {k:'coin',    g:'Core', label:'Coin pickup', fires:'coin / spark grabbed', folder:'04_coin', prov:'curated', trim:null},
+  {k:'bonus',   g:'Core', label:'Bonus catch', fires:'bonus-node catch', folder:'05_bonus', prov:'conv', trim:{t:0.80,st:0.50,d:0.30}},
+  {k:'catch',   g:'Core', label:'Gate catch', fires:'latch onto a gate (pitch ↑ w/ combo)', folder:'02_catch', prov:'conv', trim:{t:0.32,st:0.24,d:0.08}},
+  {k:'fling',   g:'Core', label:'Fling (normal)', fires:'non-perfect release', folder:'01_fling', prov:'conv', trim:{t:0.50,st:0.38,d:0.12}},
+  {k:'unlock',  g:'Core', label:'Unlock fanfare', fires:'cosmetic unlocked', folder:'08_unlock', prov:'curated', trim:null},
+  {k:'death',   g:'Core', label:'Death', fires:'run ends (void / fall / collapse)', folder:'09_death', prov:'curated', trim:null},
+
+  {k:'shield',  g:'Economy / UI', label:'Shield', fires:'shield gained / consumed', folder:'06_shield', prov:'curated', trim:null},
+  {k:'click',   g:'Economy / UI', label:'UI click', fires:'button tap', folder:'10_click', prov:'conv', trim:{t:0.16,st:0.10,d:0.06}, variants:true},
+  {k:'tick',    g:'Economy / UI', label:'Count-up tick', fires:'count-up roll (currently unused)', folder:'11_tick', prov:'conv', trim:{t:0.18,st:0.11,d:0.07}, variants:true, unused:true},
+  {k:'deposit', g:'Economy / UI', label:'Coin deposit', fires:'coin lands in the bank', folder:'12_deposit', prov:'curated', trim:null},
+  {k:'chaching',g:'Economy / UI', label:'Cha-ching', fires:'purchase / payout', folder:'13_chaching', prov:'conv', trim:{t:0.60,st:0.40,d:0.20}},
+  {k:'cascade', g:'Economy / UI', label:'Coin cascade', fires:'coin tumble (bonus catch)', folder:'14_coin_cascade', prov:'curated', trim:null},
+  {k:'jackpot', g:'Economy / UI', label:'Jackpot', fires:'daily-medal / vault win', folder:'15_jackpot', prov:'curated', trim:null},
+  {k:'riser',   g:'Economy / UI', label:'Riser', fires:'anticipation before payout', folder:'16_riser', prov:'curated', trim:null},
+
+  {k:'cheer',   g:'Fanfare layers', label:'Crowd cheer', fires:'crowd swell on big wins', folder:'17_cheer_swell', prov:'curated', trim:null},
+  {k:'cymbal',  g:'Fanfare layers', label:'Cymbal', fires:'bright topping (purchases/unlocks/wins)', folder:'18_big_win', prov:'conv', trim:{t:0.55,st:0.35,d:0.20}},
+  {k:'bigwin',  g:'Fanfare layers', label:'Big-win stinger', fires:'frenzy / vault / milestones', folder:'18_big_win', prov:'curated', trim:null},
+];
+
+const SUNO = [
+  {title:'Neon Drive', file:'main_drive.mp3', when:'High-energy main alternate — the core climb',
+   text:`Uplifting synthwave / outrun arcade instrumental, 128 BPM, A minor. Bright arpeggiated analog synth lead, punchy gated sidechained bass, crisp four-on-the-floor electronic drums with tight claps, shimmering reverb pads. Hopeful, propulsive, "one more try" momentum — feels like climbing ever upward through neon space. Clean modern production, consistent energy with no big drops or breakdowns, no fade-out ending, loopable, instrumental, no vocals.`},
+  {title:'Glitch Storm', file:'glitch_storm.mp3', when:'Tense / zone-2 energy',
+   text:`Tense glitchy electro / neon dark-synth instrumental, 132 BPM, F# minor. Stuttering glitch percussion, distorted acid-bass, granular synth stabs, anxious pulsing arpeggios, metallic risers. Driving and slightly dangerous but still groovy and playable — the feeling of speeding through an unstable digital storm. Tight punchy mix, steady relentless energy, no silence gaps, no ending, seamless loop, instrumental, no vocals.`},
+  {title:'Deep Void', file:'deep_void.mp3', when:'Dark hypnotic / zone-3',
+   text:`Hypnotic cosmic deep-space techno instrumental, 124 BPM, D minor. Deep rolling sub-bass, tight minimal four-on-the-floor kick, sparse echoing pluck melody, vast cavernous reverb, slow evolving pads, distant shimmering bells. Dark, weightless, awe-inspiring — drifting through an endless void far below the stars. Spacious immersive mix, hypnotic and steady (no buildups/drops), no fade ending, loopable, instrumental, no vocals.`},
+  {title:'Zen Drift', file:'zen_drift.mp3', when:'Calm variety + Zen mode',
+   text:`Calm ambient chillwave instrumental, 96 BPM, C major. Soft warm Rhodes-style keys, gentle pulsing sub-bass, mellow lo-fi brushed beat, dreamy airy pads, light twinkling celesta, slow breathing motion. Serene, meditative, reassuring — floating peacefully among glowing stars. Warm cozy mix, very even dynamics, no sudden changes, no ending, seamless loop, instrumental, no vocals.`},
+];
+
+const MUSIC_BUDGET = 10 * 1024 * 1024; // ~10 MB soft target for the whole rotation
+
+/* ---------------- state ---------------- */
+let music = [];                 // {name, file, url, dur, size}
+let candidates = {};            // folder -> [{name, file}]
+let currentSfx = {};            // event key -> [{name(file basename), file, size}]  (variants grouped)
+const urlCache = new Map();     // File -> objectURL
+let actx = null;
+
+function fileURL(f){ if(!urlCache.has(f)) urlCache.set(f, URL.createObjectURL(f)); return urlCache.get(f); }
+function fmtTime(s){ if(!isFinite(s)) return '0:00'; const m=Math.floor(s/60), x=Math.floor(s%60); return m+':'+String(x).padStart(2,'0'); }
+function fmtSize(b){ return b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(2)+' MB'; }
+function baseName(p){ return p.split('/').pop(); }
+function stripExt(n){ return n.replace(/\.(mp3|ogg|wav|m4a)$/i,''); }
+function variantKey(n){ return stripExt(n).replace(/[ _-]?\d+$/,''); }
+
+/* ---------------- loading ---------------- */
+document.getElementById('pick').onclick = ()=> document.getElementById('dir').click();
+document.getElementById('dir').onchange = (e)=> loadFiles([...e.target.files]);
+
+function loadFiles(files){
+  music = []; candidates = {}; currentSfx = {};
+  let bg = null;
+  for(const f of files){
+    const p = f.webkitRelativePath || f.name;
+    if(/\/sfxCandidates\//.test(p)){
+      const m = p.split('/sfxCandidates/')[1];          // "01_fling/woosh 2.wav"
+      const folder = m.split('/')[0];
+      if(!/\.(wav|mp3|ogg)$/i.test(p)) continue;
+      (candidates[folder] ||= []).push({name:stripExt(baseName(p)), fname:baseName(p), file:f});
+    } else if(/\/assets\/music\//.test(p) && /\.(mp3|ogg)$/i.test(p)){
+      music.push({name:baseName(p), file:f, size:f.size, dur:null});
+    } else if(/background_music\.(mp3|ogg)$/i.test(p)){
+      bg = {name:baseName(p)+'  (default · track 0)', file:f, size:f.size, dur:null};
+    } else if(/\/assets\/sfx\/.+\.(mp3|ogg|wav)$/i.test(p)){
+      const key = variantKey(baseName(p));
+      (currentSfx[key] ||= []).push({name:stripExt(baseName(p)), file:f, size:f.size});
+    }
+  }
+  if(bg) music.unshift(bg);
+  for(const k in candidates) candidates[k].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+  for(const k in currentSfx) currentSfx[k].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+
+  const nC = Object.values(candidates).reduce((s,a)=>s+a.length,0);
+  const nS = Object.values(currentSfx).reduce((s,a)=>s+a.length,0);
+  document.getElementById('status').innerHTML =
+    `🎵 ${music.length} tracks · 🔊 ${nS} sfx · 🗂️ ${nC} candidates`;
+  renderMusic(); renderSfx();
+  // decode durations lazily for music
+  music.forEach(t=> probeDur(t).then(()=>renderMusic()));
+}
+
+function probeDur(t){
+  return new Promise(res=>{
+    const a = new Audio(); a.preload='metadata'; a.src = fileURL(t.file);
+    a.onloadedmetadata = ()=>{ t.dur = a.duration; res(); };
+    a.onerror = ()=>{ t.dur = NaN; res(); };
+  });
+}
+
+/* ---------------- MUSIC tab ---------------- */
+function renderMusic(){
+  const el = document.getElementById('music-body');
+  if(!music.length){ el.innerHTML = emptyState(); return; }
+  const total = music.reduce((s,t)=>s+t.size,0);
+  const overBudget = total > MUSIC_BUDGET;
+  let html = `<div class="row wrap" style="margin-bottom:14px">
+    <span class="pill">${music.length} track${music.length>1?'s':''}</span>
+    <span class="pill ${overBudget?'bad':'ok'}">total ${fmtSize(total)} ${overBudget?'⚠ over ~10 MB budget':'✓ under ~10 MB'}</span>
+    <span class="pill">${music.length<5?('add '+(5-music.length)+' more for the 3–5 sweet spot'):'good rotation depth'}</span>
+  </div><div class="grid">`;
+  music.forEach((t,i)=>{
+    html += `<div class="card">
+      <div class="row wrap">
+        <button class="iconbtn play" data-play-music="${i}" title="Play">▶</button>
+        <div style="min-width:200px">
+          <div class="name">${t.name}</div>
+          <div class="meta">${t.dur==null?'…':fmtTime(t.dur)} · ${fmtSize(t.size)} ${t.size>2097152?'· <span class="warn">heavy — aim ≤ 1.5–2 MB</span>':''}</div>
+        </div>
+        <div class="spacer"></div>
+        <button data-loop-music="${i}" title="Jump to ~3s before the end with loop on, to hear the seam">↻ Test loop seam</button>
+      </div></div>`;
+  });
+  html += `</div>`;
+  el.innerHTML = html;
+  el.querySelectorAll('[data-play-music]').forEach(b=> b.onclick=()=>{ const t=music[+b.dataset.playMusic]; play(t.file, t.name, true); });
+  el.querySelectorAll('[data-loop-music]').forEach(b=> b.onclick=()=>{ const t=music[+b.dataset.loopMusic]; testLoop(t); });
+}
+
+function testLoop(t){
+  play(t.file, t.name+'  (loop-seam test)', true);
+  const p = document.getElementById('player');
+  document.getElementById('np-loop').checked = true; p.loop = true;
+  const go = ()=>{ if(isFinite(p.duration)){ p.currentTime = Math.max(0, p.duration-3); } p.removeEventListener('loadedmetadata',go); };
+  if(isFinite(p.duration) && p.duration>3) p.currentTime = p.duration-3; else p.addEventListener('loadedmetadata',go);
+}
+
+/* ---------------- SFX tab ---------------- */
+function renderSfx(){
+  const el = document.getElementById('sfx-body');
+  if(!Object.keys(currentSfx).length && !Object.keys(candidates).length){ el.innerHTML = emptyState(); return; }
+  let html=''; let group='';
+  for(const ev of EVENTS){
+    if(ev.g!==group){ group=ev.g; html += `<div class="section-title">${group}</div>`; }
+    html += sfxCard(ev);
+  }
+  el.innerHTML = html;
+  wireSfx(el);
+  applyFilter();
+}
+
+function sfxCard(ev){
+  const cur = currentSfx[ev.k] || [];
+  const cands = candidates[ev.folder] || [];
+  const provTag = ev.prov==='curated'
+    ? `<span class="tag curated">curated</span>`
+    : `<span class="tag conv">converted</span>`;
+  const varTag = ev.variants ? `<span class="tag var">${cur.length||0} variant${cur.length===1?'':'s'} · random</span>` : '';
+  const missTag = cur.length ? '' : `<span class="tag missing">no file!</span>`;
+  // current players
+  let players = cur.map(c=>`<button class="iconbtn play" data-play-sfx="${ev.k}::${c.name}" title="Play ${c.name}">▶</button>`).join('');
+  if(!players) players = `<span class="meta bad">— missing —</span>`;
+  const curNames = cur.map(c=>`<code class="k">${c.name}.mp3</code>`).join(' ') || '<span class="bad">none</span>';
+
+  // params controls
+  const tr = ev.trim || {t:0.60,st:0.40,d:0.20};
+  const params = `<div class="params">
+      <label>-t <input type="number" step="0.01" min="0.02" value="${tr.t}" data-p="t" data-k="${ev.k}"></label>
+      <label>fade st <input type="number" step="0.01" min="0" value="${tr.st}" data-p="st" data-k="${ev.k}"></label>
+      <label>fade d <input type="number" step="0.01" min="0" value="${tr.d}" data-p="d" data-k="${ev.k}"></label>
+      ${ev.prov==='curated' ? '<span class="meta">curated = used as-is; these only apply if you re-trim</span>' : ''}
+    </div>`;
+
+  // candidates
+  const list = cands.length ? cands.map(c=>`
+      <div class="cand">
+        <button class="iconbtn play" data-play-cand="${ev.folder}::${c.name}" title="Play">▶</button>
+        <span class="cn">${c.name}</span>
+        <button data-trim="${ev.k}::${ev.folder}::${c.name}" title="Preview the trim (in-browser, fade applied)">✎ trim</button>
+        <button data-cmd="${ev.k}::${ev.folder}::${c.name}" title="Copy ffmpeg swap command">⧉ cmd</button>
+      </div>`).join('') : `<div class="meta" style="padding:6px 8px">No candidate folder <code class="k">${ev.folder}</code> found (load the project root that contains <code class="k">sfxCandidates/</code>).</div>`;
+
+  const destNote = ev.variants ? `dest filename uses variant numbers (e.g. <code class="k">${ev.k}1.mp3</code>)` : `dest <code class="k">${ev.k}.mp3</code>`;
+
+  return `<div class="card sfx-card" data-search="${(ev.k+' '+ev.label+' '+ev.fires).toLowerCase()}">
+    <div class="row wrap">
+      <div style="min-width:220px">
+        <div class="name">${ev.label} ${ev.unused?'<span class="meta">💤 unused</span>':''}</div>
+        <div class="meta">key <code class="k">${ev.k}</code> · ${ev.fires}</div>
+      </div>
+      ${provTag}${varTag}${missTag}
+      <div class="spacer"></div>
+      <div class="row" style="gap:6px">${players}</div>
+    </div>
+    <div class="meta" style="margin-top:8px">now: ${curNames}</div>
+    <details>
+      <summary>Audition ${cands.length} candidate${cands.length===1?'':'s'} in <code class="k">${ev.folder}/</code> &amp; swap</summary>
+      ${params}
+      <div class="cands">${list}</div>
+      <div class="cmd" id="cmd-${ev.k}">Pick a candidate's <b>⧉ cmd</b> to generate the swap command.<br><span class="meta">${destNote}</span></div>
+    </details>
+  </div>`;
+}
+
+function wireSfx(el){
+  el.querySelectorAll('[data-play-sfx]').forEach(b=> b.onclick=()=>{
+    const [k,name] = b.dataset.playSfx.split('::');
+    const c = (currentSfx[k]||[]).find(x=>x.name===name); if(c) play(c.file, k+' · '+name, false);
+  });
+  el.querySelectorAll('[data-play-cand]').forEach(b=> b.onclick=()=>{
+    const [folder,name] = b.dataset.playCand.split('::');
+    const c = (candidates[folder]||[]).find(x=>x.name===name); if(c) play(c.file, folder+' · '+name, false);
+  });
+  el.querySelectorAll('[data-trim]').forEach(b=> b.onclick=()=>{
+    const [k,folder,name] = b.dataset.trim.split('::');
+    const c = (candidates[folder]||[]).find(x=>x.name===name); if(c) previewTrim(c.file, readParams(k), folder+' · '+name+'  (trim)');
+  });
+  el.querySelectorAll('[data-cmd]').forEach(b=> b.onclick=()=>{
+    const [k,folder,name] = b.dataset.cmd.split('::');
+    const ev = EVENTS.find(e=>e.k===k); const pr = readParams(k);
+    const c = (candidates[folder]||[]).find(x=>x.name===name);
+    const src = c ? c.fname : name+'.wav';
+    const dest = ev.variants ? k+'1' : k;
+    const cmd = `ffmpeg -y -i "sfxCandidates/${folder}/${src}" -t ${pr.t} \\\n  -af "loudnorm=I=-16:TP=-1.5:LRA=11,afade=t=out:st=${pr.st}:d=${pr.d}" \\\n  -ac 1 -ar 44100 -codec:a libmp3lame -b:a 96k "src/assets/sfx/${dest}.mp3"`;
+    const box = document.getElementById('cmd-'+k);
+    box.innerHTML = `<button data-copy>Copy</button>${escapeHtml(cmd)}`;
+    box.querySelector('[data-copy]').onclick = ()=> copy(cmd);
+  });
+  el.querySelectorAll('.params input').forEach(inp=> inp.oninput = ()=>{});
+}
+
+function readParams(k){
+  const card = [...document.querySelectorAll('.params input')].filter(i=>i.dataset.k===k);
+  const get = p => +(card.find(i=>i.dataset.p===p)?.value || 0);
+  return {t:get('t'), st:get('st'), d:get('d')};
+}
+
+document.getElementById('sfxfilter').oninput = applyFilter;
+function applyFilter(){
+  const q = document.getElementById('sfxfilter').value.trim().toLowerCase();
+  document.querySelectorAll('.sfx-card').forEach(c=> c.classList.toggle('hidden', q && !c.dataset.search.includes(q)));
+}
+
+/* ---------------- trim preview (WebAudio) ---------------- */
+async function previewTrim(file, pr, label){
+  try{
+    actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+    await actx.resume();
+    const buf = await actx.decodeAudioData(await file.arrayBuffer());
+    stop();
+    const src = actx.createBufferSource(); src.buffer = buf;
+    const g = actx.createGain();
+    const vol = +document.getElementById('np-vol').value;
+    const now = actx.currentTime;
+    const t = Math.min(pr.t, buf.duration);
+    const st = Math.min(pr.st, t);
+    g.gain.setValueAtTime(vol, now);
+    g.gain.setValueAtTime(vol, now+st);
+    g.gain.linearRampToValueAtTime(0.0001, now+Math.min(t, st+pr.d));
+    src.connect(g); g.connect(actx.destination);
+    src.start(now, 0, t);
+    setNP(label, true, false);
+    src.onended = ()=> setNP(label, false, false);
+    window._trimSrc = src;
+  }catch(e){ alert('Could not preview: '+e.message); }
+}
+
+/* ---------------- shared player ---------------- */
+const player = document.getElementById('player');
+const np = document.getElementById('np');
+function play(file, label, loop){
+  if(window._trimSrc){ try{window._trimSrc.stop()}catch(e){} window._trimSrc=null; }
+  player.src = fileURL(file);
+  player.loop = loop || document.getElementById('np-loop').checked;
+  document.getElementById('np-loop').checked = player.loop;
+  player.volume = +document.getElementById('np-vol').value;
+  player.play();
+  setNP(label, true, true);
+  highlight(file);
+}
+function setNP(label, playing, isMedia){
+  np.classList.add('show');
+  document.getElementById('np-name').textContent = label;
+  document.getElementById('np-toggle').textContent = playing?'⏸':'▶';
+  document.getElementById('np-toggle').dataset.media = isMedia?'1':'0';
+}
+function stop(){ player.pause(); if(window._trimSrc){try{window._trimSrc.stop()}catch(e){}window._trimSrc=null;} }
+function highlight(file){
+  document.querySelectorAll('.iconbtn.play.playing').forEach(b=>b.classList.remove('playing'));
+}
+player.ontimeupdate = ()=>{
+  document.getElementById('np-time').textContent = fmtTime(player.currentTime)+' / '+fmtTime(player.duration);
+  document.getElementById('np-seek').value = player.duration? (player.currentTime/player.duration*1000):0;
+};
+player.onended = ()=>{ if(!player.loop){ document.getElementById('np-toggle').textContent='▶'; } };
+document.getElementById('np-stop').onclick = ()=>{ stop(); np.classList.remove('show'); };
+document.getElementById('np-toggle').onclick = (e)=>{
+  if(e.target.dataset.media==='0') return; // trim previews are fire-and-forget
+  if(player.paused){ player.play(); e.target.textContent='⏸'; } else { player.pause(); e.target.textContent='▶'; }
+};
+document.getElementById('np-seek').oninput = (e)=>{ if(player.duration) player.currentTime = e.target.value/1000*player.duration; };
+document.getElementById('np-loop').onchange = (e)=>{ player.loop = e.target.checked; };
+document.getElementById('np-vol').oninput = (e)=>{ player.volume = +e.target.value; };
+document.addEventListener('keydown', e=>{ if(e.code==='Space' && e.target.tagName!=='INPUT'){ e.preventDefault(); document.getElementById('np-toggle').click(); } });
+
+/* ---------------- PROMPTS tab ---------------- */
+function renderPrompts(){
+  document.getElementById('prompts-body').innerHTML = SUNO.map((p,i)=>`
+    <div class="prompt">
+      <h4>${i+1}. ${p.title}</h4>
+      <div class="when">${p.when} · save as <code class="k">${p.file}</code></div>
+      <pre><button data-pc="${i}">Copy</button>${escapeHtml(p.text)}</pre>
+    </div>`).join('') +
+    `<p class="hint">After generating: drop the files into <code class="k">src/assets/music/</code> (they auto-join the rotation).
+     Keep each ≤ ~1.5–2 MB and seamlessly loopable — use the <b>Soundtracks</b> tab's <b>Test loop seam</b> to check.</p>`;
+  document.querySelectorAll('[data-pc]').forEach(b=> b.onclick=()=> copy(SUNO[+b.dataset.pc].text));
+}
+renderPrompts();
+
+/* ---------------- tabs / utils ---------------- */
+document.querySelectorAll('.tab').forEach(t=> t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active')); t.classList.add('active');
+  for(const name of ['music','sfx','prompts']) document.getElementById('tab-'+name).classList.toggle('hidden', name!==t.dataset.tab);
+});
+function emptyState(){
+  return `<div class="empty"><div class="big">📂</div>
+    <p>Load your <b>Coil</b> project folder to begin.<br>
+    <span class="meta">The tool reads <code class="k">src/assets/</code> and <code class="k">sfxCandidates/</code> — nothing is uploaded; it all stays in your browser.</span></p>
+    <button class="primary" onclick="document.getElementById('dir').click()">📂 Load project folder…</button></div>`;
+}
+function escapeHtml(s){ return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function copy(text){ navigator.clipboard.writeText(text).then(()=>toast('Copied ✓')).catch(()=>toast('Copy failed')); }
+let toastT; function toast(m){ let t=document.getElementById('_toast'); if(!t){ t=document.createElement('div'); t.id='_toast'; t.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--cyan);color:#04120f;font-weight:700;padding:8px 16px;border-radius:999px;z-index:50;transition:.2s'; document.body.appendChild(t);} t.textContent=m; t.style.opacity='1'; clearTimeout(toastT); toastT=setTimeout(()=>t.style.opacity='0',1200); }
+
+// initial empty states
+document.getElementById('music-body').innerHTML = emptyState();
+document.getElementById('sfx-body').innerHTML = emptyState();
+</script>
+</body>
+</html>

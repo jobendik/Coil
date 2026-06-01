@@ -70,6 +70,7 @@ export function noise(d = 0.18, vol = 0.22, lp = 1600): void {
 
 /* swelling band-passed noise — a "crowd cheer / applause" texture for big wins */
 export function cheerSwell(d = 0.55, vol = 0.16): void {
+  if (Samples.play('cheer', 0.6)) return;
   if (settings.muted) return;
   const a = ac();
   if (!a) return;
@@ -96,6 +97,7 @@ export function cheerSwell(d = 0.55, vol = 0.16): void {
 
 /* bright noise cymbal swell for fanfares */
 export function cymbal(d = 0.4): void {
+  if (Samples.play('cymbal', 0.45)) return;
   if (settings.muted) return;
   const a = ac();
   if (!a) return;
@@ -118,6 +120,7 @@ export function cymbal(d = 0.4): void {
 
 /* layered big-win cue: sparkle shimmer + major-triad chord + low thump (per casino spec) */
 export function bigWinAudio(intensity: number): void {
+  if (Samples.play('bigwin', Math.min(1, 0.7 + intensity * 0.12))) return;
   if (settings.muted) return;
   const a = ac();
   if (!a) return;
@@ -141,31 +144,39 @@ export function bigWinAudio(intensity: number): void {
   o.stop(t + 0.24);
 }
 
-/* ---------- optional sampled-SFX layer ----------
-   The procedural tones above are the zero-weight FALLBACK and always work. Drop
-   real audio files into src/assets/sfx/ named after the events below
-   (perfect / combo / coin / death / unlock / fling / bonus / catch · .mp3|ogg|wav)
-   and they're lazily fetched + decoded after the first user gesture and played
-   INSTEAD — giving the load-bearing moments sampled weight without delaying first
-   paint, and with a guaranteed procedural fallback if a file is missing or fails
-   to decode (off-platform, adblock, slow net). Add only the ones you have; each
-   event independently uses a sample if present, else the procedural tone.
-   import.meta.glob is a Vite transform; the try/catch keeps the headless test
-   bundler happy (where it's undefined → no samples → procedural path). */
+/* ---------- sampled-SFX layer (every event ships a sample) ----------
+   The shipped build provides a real audio file in src/assets/sfx/ for EVERY event,
+   so no synthesized tone is ever heard — the Web-Audio code above/below remains
+   ONLY as a never-triggered safety net (e.g. a decode failure on a hostile network).
+   Files are named after the event keys and are lazily fetched + decoded after the
+   first user gesture (so first paint stays fast):
+     perfect · combo · coin · bonus · catch · fling · unlock · death ·
+     shield · click · tick · deposit · chaching · cascade · jackpot · riser ·
+     cheer · cymbal · bigwin   (.mp3 | .ogg | .wav)
+   Each event independently uses its sample if present, else the procedural tone, so
+   deleting a file cleanly reverts that one event. import.meta.glob is a Vite
+   transform; the try/catch keeps the headless test bundler happy (where it's
+   undefined → no samples → procedural path). */
 let sfxFiles: Record<string, string> = {};
 try {
   sfxFiles = import.meta.glob('../assets/sfx/*.{mp3,ogg,wav}', {
     eager: true, query: '?url', import: 'default',
   }) as Record<string, string>;
 } catch { /* non-Vite bundler */ }
-const sampleUrls: Record<string, string> = {};
+// Map each file to an event key, supporting MULTIPLE variants per event: a
+// trailing number is stripped so `click1.mp3`, `click2.mp3`, `click3.mp3` all
+// group under `click` and one is chosen at random per play (kills repetition
+// fatigue on frequent UI sounds). A plain `coin.mp3` → key `coin` (one variant).
+const sampleUrls: Record<string, string[]> = {};
 for (const path in sfxFiles) {
-  const base = (path.split('/').pop() ?? '').replace(/\.(mp3|ogg|wav)$/i, '');
-  if (base) sampleUrls[base] = sfxFiles[path];
+  const file = (path.split('/').pop() ?? '').replace(/\.(mp3|ogg|wav)$/i, '');
+  if (!file) continue;
+  const key = file.replace(/[ _-]?\d+$/, '') || file;   // drop a trailing variant number
+  (sampleUrls[key] || (sampleUrls[key] = [])).push(sfxFiles[path]);
 }
 
 const Samples = {
-  buf: {} as Record<string, AudioBuffer>,
+  buf: {} as Record<string, AudioBuffer[]>,
   done: false,
 
   /** Lazily fetch + decode every dropped-in sample (call after the first gesture). */
@@ -175,24 +186,28 @@ const Samples = {
     const a = ac();
     if (!a) return;
     for (const name in sampleUrls) {
-      fetch(sampleUrls[name])
-        .then((r) => r.arrayBuffer())
-        .then((ab) => a.decodeAudioData(ab))
-        .then((b) => { this.buf[name] = b; })
-        .catch(() => { /* keep the procedural fallback for this event */ });
+      for (const url of sampleUrls[name]) {
+        fetch(url)
+          .then((r) => r.arrayBuffer())
+          .then((ab) => a.decodeAudioData(ab))
+          .then((b) => { (this.buf[name] || (this.buf[name] = [])).push(b); })
+          .catch(() => { /* keep the procedural fallback for this event */ });
+      }
     }
   },
 
-  /** Play a sample if one is loaded for `name`. Returns true if the event was
-   *  handled (sample fired, or we're muted) so the caller skips the procedural
-   *  fallback. `rate` > 1 brightens playback (mirrors the combo pitch ramps). */
+  /** Play a sample if one is loaded for `name` (a random variant when several
+   *  exist). Returns true if the event was handled (sample fired, or we're muted)
+   *  so the caller skips the procedural fallback. `rate` > 1 brightens playback
+   *  (mirrors the combo pitch ramps). */
   play(name: string, vol = 0.9, rate = 1): boolean {
     if (settings.muted) return true;
-    const b = this.buf[name];
-    if (!b) return false;
+    const arr = this.buf[name];
+    if (!arr || !arr.length) return false;
     const a = ac();
     if (!a) return false;
     try {
+      const b = arr.length === 1 ? arr[0] : arr[(Math.random() * arr.length) | 0];
       const s = a.createBufferSource();
       s.buffer = b;
       s.playbackRate.value = rate;
@@ -249,6 +264,7 @@ export const SFX = {
     [784, 988, 1318].forEach((f, i) => setTimeout(() => tone(f, 0.12, 'triangle', 0.16), i * 55));
   },
   shield(): void {
+    if (Samples.play('shield', 0.85)) return;
     tone(300, 0.2, 'sine', 0.16, 500);
   },
   milestone(): void {
@@ -265,39 +281,46 @@ export const SFX = {
     tone(120, 0.35, 'sawtooth', 0.22, -70);
   },
   click(): void {
+    if (Samples.play('click', 0.55)) return;
     tone(520, 0.05, 'square', 0.1, 90);
   },
   /* a short bright "tick" used by count-up rolls */
   tick(): void {
     if (!thr('tick', 24)) return;
+    if (Samples.play('tick', 0.5)) return;
     tone(1500, 0.03, 'square', 0.05, 80);
   },
   /* coin lands in the bank — bright plink */
   deposit(): void {
     if (!thr('deposit', 22)) return;
+    if (Samples.play('deposit', 0.7)) return;
     tone(1240, 0.04, 'square', 0.08, 300);
     setTimeout(() => tone(1860, 0.05, 'triangle', 0.05), 28);
   },
   /* cash-register ka-ching */
   chaching(): void {
     if (!thr('chaching', 60)) return;
+    if (Samples.play('chaching', 0.9)) return;
     tone(880, 0.05, 'square', 0.12, 300);
     setTimeout(() => tone(1320, 0.07, 'square', 0.12, 180), 55);
     setTimeout(() => tone(1860, 0.13, 'triangle', 0.13), 115);
   },
   /* a tumble of coins into the tray */
   coinCascade(n = 6): void {
+    if (Samples.play('cascade', 0.8)) return;
     if (settings.muted) return;
     n = Math.min(n, 12);
     for (let i = 0; i < n; i++) setTimeout(() => tone(720 + i * 85, 0.05, 'square', 0.07, 140), i * 32);
   },
   /* full fanfare for jackpot / vault wins */
   jackpot(): void {
+    if (Samples.play('jackpot', 0.95)) return;
     [523, 659, 784, 1046, 1318, 1568, 2093].forEach((f, i) => setTimeout(() => tone(f, 0.14, 'triangle', 0.16), i * 52));
     setTimeout(() => cheerSwell(0.6, 0.16), 120);
   },
   /* ascending anticipation riser before a payout reveal */
   riser(dur = 0.7): void {
+    if (Samples.play('riser', 0.8)) return;
     if (settings.muted) return;
     const a = ac();
     if (!a) return;

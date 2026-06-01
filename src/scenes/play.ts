@@ -22,13 +22,28 @@ export function setZenExitHandler(fn: () => void): void {
 /* ---------- starfield (one per session) ---------- */
 const STARS = (() => {
   const arr: Array<{ x: number; y: number; d: number; s: number; a: number }> = [];
-  for (let i = 0; i < 64; i++) {
+  for (let i = 0; i < 82; i++) {
     arr.push({
       x: Math.random(),
       y: Math.random(),
       d: rand(0.08, 0.45),
-      s: rand(1, 2.4),
-      a: rand(0.12, 0.4),
+      s: rand(0.8, 2.2),
+      a: rand(0.1, 0.5),
+    });
+  }
+  return arr;
+})();
+
+/* ---------- faint climb streaks (one per session) ---------- */
+const STREAKS = (() => {
+  const arr: Array<{ x: number; y: number; d: number; h: number; a: number }> = [];
+  for (let i = 0; i < 18; i++) {
+    arr.push({
+      x: Math.random(),
+      y: Math.random(),
+      d: rand(0.12, 0.34),
+      h: rand(42, 110),
+      a: rand(0.025, 0.075),
     });
   }
   return arr;
@@ -43,12 +58,37 @@ const NEBULA = (() => {
       y: Math.random(),
       d: rand(0.05, 0.22),      // shallow parallax → reads as far away
       r: rand(120, 260),
-      a: rand(0.05, 0.11),
+      a: rand(0.032, 0.076),
       c: i % 2,                 // alternate between the world's node + void accents
     });
   }
   return arr;
 })();
+
+// Cache the two size-only background gradients (centre vignette + edge scrim).
+// They depend only on W,H, so rebuilding them every frame just churns allocations
+// and GPU uploads — costly on low-end. Rebuilt only when the canvas size changes.
+let _bgKey = '';
+let _bgShade: CanvasGradient | null = null;
+let _bgScrim: CanvasGradient | null = null;
+function bgGrads(W: number, H: number): { shade: CanvasGradient; scrim: CanvasGradient } {
+  const key = W + 'x' + H;
+  if (key !== _bgKey || !_bgShade || !_bgScrim) {
+    const { ctx } = view;
+    _bgKey = key;
+    const shade = ctx.createRadialGradient(W / 2, H * 0.42, H * 0.08, W / 2, H * 0.5, H * 0.8);
+    shade.addColorStop(0, 'rgba(0,0,0,0.05)');
+    shade.addColorStop(0.58, 'rgba(0,0,0,0.12)');
+    shade.addColorStop(1, 'rgba(0,0,0,0.48)');
+    _bgShade = shade;
+    const scrim = ctx.createLinearGradient(0, 0, 0, H);
+    scrim.addColorStop(0, 'rgba(2,1,8,0)');
+    scrim.addColorStop(0.5, 'rgba(2,1,8,0.2)');
+    scrim.addColorStop(1, 'rgba(2,1,8,0)');
+    _bgScrim = scrim;
+  }
+  return { shade: _bgShade, scrim: _bgScrim };
+}
 
 export function drawBG(): void {
   const { ctx, W, H } = view;
@@ -84,6 +124,13 @@ export function drawBG(): void {
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
   const cam = state.G?.cameraY ?? 0;
+  const bgT = state.G?.t ?? performance.now() * 0.001;
+
+  // Crisp contrast pass: keep the centre readable while letting the edges fall
+  // into a deeper arcade-black vignette. (Size-cached — see bgGrads.)
+  const { shade, scrim } = bgGrads(W, H);
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, W, H);
 
   // Parallax nebula clouds — soft additive glow that drifts as you climb, giving
   // the void real depth. Skipped on the lowest FX tier; uses the world accents.
@@ -112,6 +159,45 @@ export function drawBG(): void {
     ctx.fillRect(st.x * W, yy, st.s, st.s);
   }
   ctx.globalAlpha = 1;
+
+  if (glowFX(10) > 3) {
+    ctx.save();
+    ctx.lineWidth = 1;
+    ctx.globalCompositeOperation = 'lighter';
+    for (const st of STREAKS) {
+      const yy = (((st.y * H + cam * st.d + bgT * 20 * st.d) % H) + H) % H;
+      const x = st.x * W;
+      const g = ctx.createLinearGradient(x, yy - st.h, x, yy);
+      g.addColorStop(0, 'rgba(47,243,224,0)');
+      g.addColorStop(0.52, `rgba(198,216,255,${st.a})`);
+      g.addColorStop(1, 'rgba(255,77,141,0)');
+      ctx.strokeStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(x, yy - st.h);
+      ctx.lineTo(x, yy);
+      ctx.stroke();
+    }
+    const cycle = (bgT * 0.08) % 1;
+    if (cycle < 0.16) {
+      const p = cycle / 0.16;
+      const x = lerp(W * 0.18, W * 0.86, p);
+      const y = lerp(H * 0.18, H * 0.42, p);
+      ctx.globalAlpha = Math.sin(p * Math.PI) * 0.75;
+      ctx.strokeStyle = '#ffffff';
+      ctx.shadowColor = '#9ffff2';
+      ctx.shadowBlur = glowFX(14);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 58, y - 22);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  ctx.fillStyle = scrim;
+  ctx.fillRect(0, 0, W, H);
 }
 
 function drawNode(n: import('../types').Node): void {
@@ -190,20 +276,83 @@ function drawNode(n: import('../types').Node): void {
     return;
   }
 
+  const G = state.G;
   const bonus = n.type === 'bonus';
-  const col = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : (world().node || sk.c);
-  const pr = n.r * (1 + Math.sin(state.G.t * 2 + (n.pulse ?? 0)) * 0.06);
+  const target = G.target === n;
+  const latched = G.player.node === n && G.player.latched;
+  const frenzy = G.frenzyT > 0;
+  const baseCol = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : (world().node || sk.c);
+  const col = target ? (frenzy ? '#ff4d8d' : sk.t) : baseCol;
+  const core = bonus ? '#fff6c2' : target ? '#ffffff' : '#ece8ff';
+  const pulse = 0.5 + 0.5 * Math.sin(G.t * (target ? 5.2 : 2.3) + (n.pulse ?? 0));
+  const pr = n.r * (1 + Math.sin(G.t * 2 + (n.pulse ?? 0)) * (target ? 0.09 : 0.045));
+
   ctx.save();
-  ctx.fillStyle = col;
+  ctx.globalCompositeOperation = 'lighter';
+  const auraR = pr * (target ? 3.25 + pulse * 0.45 : bonus ? 2.75 : 2.05);
+  const aura = ctx.createRadialGradient(x, y, pr * 0.2, x, y, auraR);
+  aura.addColorStop(0, hexA(col, target ? 0.42 : bonus ? 0.32 : 0.2));
+  aura.addColorStop(0.42, hexA(col, target ? 0.22 : 0.1));
+  aura.addColorStop(1, hexA(col, 0));
+  ctx.fillStyle = aura;
+  ctx.fillRect(x - auraR, y - auraR, auraR * 2, auraR * 2);
+  if (target) {
+    ctx.globalAlpha = 0.36 + pulse * 0.32;
+    ctx.strokeStyle = frenzy ? '#ffd24a' : sk.t;
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = ctx.strokeStyle;
+    ctx.shadowBlur = glowFX(14);
+    ctx.beginPath();
+    ctx.arc(x, y, pr + 10 + pulse * 4, 0, TAU);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 4; i++) {
+      const a = G.t * 1.8 + (i / 4) * TAU + (n.pulse ?? 0);
+      const sx = Math.cos(a) * (pr + 16 + pulse * 5);
+      const sy = Math.sin(a) * (pr + 16 + pulse * 5);
+      ctx.save();
+      ctx.translate(x + sx, y + sy);
+      ctx.rotate(a + G.t * 2);
+      ctx.fillStyle = i % 2 ? '#ffffff' : sk.t;
+      ctx.shadowColor = ctx.fillStyle;
+      ctx.shadowBlur = glowFX(8);
+      star(4, 2.9, 1.0);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+
+  ctx.save();
   ctx.shadowColor = col;
-  ctx.shadowBlur = glowFX(bonus ? 24 : 18);
+  ctx.shadowBlur = glowFX(target ? 26 : bonus ? 24 : 16);
+  const body = ctx.createRadialGradient(x - pr * 0.38, y - pr * 0.42, pr * 0.08, x, y, pr);
+  body.addColorStop(0, '#ffffff');
+  body.addColorStop(0.28, core);
+  body.addColorStop(0.72, col);
+  body.addColorStop(1, mixHex(col, '#05030e', 0.22));
+  ctx.fillStyle = body;
   ctx.beginPath();
   ctx.arc(x, y, pr, 0, TAU);
   ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = target ? 'rgba(255,255,255,.85)' : 'rgba(255,255,255,.42)';
+  ctx.lineWidth = target ? 1.8 : 1.1;
   ctx.beginPath();
-  ctx.arc(x - pr * 0.3, y - pr * 0.3, pr * 0.28, 0, TAU);
+  ctx.arc(x, y, pr + (latched ? 1.5 : 0), 0, TAU);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  ctx.beginPath();
+  ctx.ellipse(x - pr * 0.32, y - pr * 0.38, pr * 0.24, pr * 0.15, -0.45, 0, TAU);
   ctx.fill();
+  if (bonus || frenzy) {
+    ctx.strokeStyle = bonus ? '#fff3b0' : '#ffd24a';
+    ctx.globalAlpha = bonus ? 0.88 : 0.55;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, pr * 0.58, G.t * 1.2, G.t * 1.2 + Math.PI * 1.35);
+    ctx.stroke();
+  }
   ctx.restore();
 
   // MOVING node: small drift chevrons pointing the way it's currently sliding,
@@ -295,14 +444,30 @@ function drawGate(): void {
   const inPerfect = angDiff(pl.ang, sw.center) <= sw.tol;
   ctx.save();
   ctx.lineCap = 'round';
+  ctx.globalAlpha = 0.18;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, ORBIT, 0, TAU);
+  ctx.stroke();
   // safe release band — neutral grey in colour-blind mode so the perfect cue isn't hue-only
   ctx.strokeStyle = cb ? 'rgba(198,208,235,0.9)' : sk.c;
-  ctx.globalAlpha = cb ? 0.22 : 0.30;
-  ctx.lineWidth = 6;
+  ctx.globalAlpha = cb ? 0.26 : 0.34;
+  ctx.lineWidth = 7;
+  ctx.shadowColor = cb ? '#c6d0eb' : sk.c;
+  ctx.shadowBlur = glowFX(8);
   ctx.beginPath();
   ctx.arc(cx, cy, ORBIT, sw.lo, sw.hi);
   ctx.stroke();
   // perfect band
+  ctx.globalAlpha = inPerfect ? 0.34 : 0.18;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = inPerfect ? 15 : 11;
+  ctx.shadowColor = '#ffffff';
+  ctx.shadowBlur = glowFX(inPerfect ? 22 : 10);
+  ctx.beginPath();
+  ctx.arc(cx, cy, ORBIT, sw.center - sw.tol, sw.center + sw.tol);
+  ctx.stroke();
   ctx.globalAlpha = inPerfect ? 1 : 0.85;
   ctx.strokeStyle = (cb || inPerfect) ? '#ffffff' : sk.t;
   ctx.lineWidth = inPerfect ? 8 : 6;
@@ -326,6 +491,17 @@ function drawGate(): void {
       ctx.moveTo(cx + c * (ORBIT - 9), cy + s * (ORBIT - 9));
       ctx.lineTo(cx + c * (ORBIT + 9), cy + s * (ORBIT + 9));
       ctx.stroke();
+    }
+  }
+  if (inPerfect) {
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = glowFX(12);
+    for (const a of [sw.center - sw.tol * 0.55, sw.center, sw.center + sw.tol * 0.55]) {
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * ORBIT, cy + Math.sin(a) * ORBIT, 2.4, 0, TAU);
+      ctx.fill();
     }
   }
   ctx.restore();
@@ -364,14 +540,36 @@ function drawTargetBeacon(): void {
   }
   if (y > H + 40) return;
   ctx.save();
-  ctx.globalAlpha = 0.32 + pulse * 0.22;
-  ctx.strokeStyle = sk.t;
-  ctx.lineWidth = 2;
-  ctx.shadowColor = sk.t;
-  ctx.shadowBlur = glowFX(8);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.18 + pulse * 0.18;
+  ctx.strokeStyle = G.frenzyT > 0 ? '#ffd24a' : sk.t;
+  ctx.lineWidth = 8;
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = glowFX(18);
   ctx.beginPath();
-  ctx.arc(x, y, tgt.r + 6 + pulse * 2, 0, TAU);
+  ctx.arc(x, y, tgt.r + 12 + pulse * 5, 0, TAU);
   ctx.stroke();
+  ctx.globalAlpha = 0.58 + pulse * 0.32;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, tgt.r + 7 + pulse * 3, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = 1.4;
+  ctx.setLineDash([3, 9]);
+  ctx.beginPath();
+  ctx.arc(x, y, tgt.r + 18 + pulse * 2, G.t * 1.1, G.t * 1.1 + TAU * 0.72);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 0.82;
+  ctx.lineWidth = 2;
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * TAU + G.t * 0.65;
+    ctx.beginPath();
+    ctx.moveTo(x + Math.cos(a) * (tgt.r + 20), y + Math.sin(a) * (tgt.r + 20));
+    ctx.lineTo(x + Math.cos(a) * (tgt.r + 26), y + Math.sin(a) * (tgt.r + 26));
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -480,22 +678,36 @@ function drawPlayer(): void {
   const x = pl.wx;
   const y = sY(pl.wy);
   const sk = skin();
+  const frenzy = G.frenzyT > 0;
+  const visualR = pl.r * (frenzy ? 1.42 : 1.32);
 
   if (!pl.latched && pl.trail.length > 1) {
     // per-equipped-trail flight ribbon — gives each unlock a real visual identity
     const tr = trail();
     const style = tr.style;
-    const tc = tr.c || sk.c;
-    const tt2 = tr.t || sk.t;
+    const tc = frenzy ? '#ffd24a' : tr.c || sk.c;
+    const tt2 = frenzy ? '#2ff3e0' : tr.t || sk.t;
     ctx.save();
     ctx.lineCap = 'round';
+    ctx.globalCompositeOperation = 'lighter';
     if (style === 'line' || style === 'comet') {
-      ctx.strokeStyle = tc;
-      if (style === 'comet') { ctx.shadowColor = tc; ctx.shadowBlur = glowFX(10); }
+      ctx.shadowColor = tc;
+      ctx.shadowBlur = glowFX(frenzy || style === 'comet' ? 16 : 9);
       for (let i = 1; i < pl.trail.length; i++) {
         const a = i / pl.trail.length;
-        ctx.globalAlpha = a * (style === 'comet' ? 0.7 : 0.5);
-        ctx.lineWidth = a * pl.r * (style === 'comet' ? 1.7 : 1.3);
+        ctx.strokeStyle = hexA(tc, a * (frenzy ? 0.82 : style === 'comet' ? 0.72 : 0.52));
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = a * visualR * (frenzy ? 2.35 : style === 'comet' ? 1.85 : 1.45);
+        ctx.beginPath();
+        ctx.moveTo(pl.trail[i - 1].x, sY(pl.trail[i - 1].y));
+        ctx.lineTo(pl.trail[i].x, sY(pl.trail[i].y));
+        ctx.stroke();
+      }
+      ctx.shadowBlur = glowFX(5);
+      for (let i = Math.max(1, pl.trail.length - 9); i < pl.trail.length; i++) {
+        const a = i / pl.trail.length;
+        ctx.strokeStyle = hexA(tt2, a * 0.62);
+        ctx.lineWidth = Math.max(1, a * visualR * 0.45);
         ctx.beginPath();
         ctx.moveTo(pl.trail[i - 1].x, sY(pl.trail[i - 1].y));
         ctx.lineTo(pl.trail[i].x, sY(pl.trail[i].y));
@@ -507,7 +719,7 @@ function drawPlayer(): void {
         const a = (i + 1) / pl.trail.length;
         ctx.globalAlpha = a * 0.7;
         ctx.beginPath();
-        ctx.arc(pl.trail[i].x, sY(pl.trail[i].y), a * pl.r * 0.5 + 1, 0, TAU);
+        ctx.arc(pl.trail[i].x, sY(pl.trail[i].y), a * visualR * 0.5 + 1, 0, TAU);
         ctx.fill();
       }
     } else if (style === 'sparkle') {
@@ -543,7 +755,7 @@ function drawPlayer(): void {
         const a = i / pl.trail.length;
         ctx.strokeStyle = `hsl(${(G.t * 120 + i * 18) % 360},90%,65%)`;
         ctx.globalAlpha = a * 0.6;
-        ctx.lineWidth = a * pl.r * 1.4;
+        ctx.lineWidth = a * visualR * 1.4;
         ctx.beginPath();
         ctx.moveTo(pl.trail[i - 1].x, sY(pl.trail[i - 1].y));
         ctx.lineTo(pl.trail[i].x, sY(pl.trail[i].y));
@@ -559,8 +771,10 @@ function drawPlayer(): void {
     const n = pl.node;
     ctx.save();
     ctx.strokeStyle = sk.c;
-    ctx.globalAlpha = 0.4;
+    ctx.globalAlpha = 0.34;
     ctx.lineWidth = 2;
+    ctx.shadowColor = sk.c;
+    ctx.shadowBlur = glowFX(7);
     ctx.beginPath();
     ctx.moveTo(n.wx, sY(n.wy));
     ctx.lineTo(x, y);
@@ -577,9 +791,29 @@ function drawPlayer(): void {
     ctx.shadowColor = '#9ffff2';
     ctx.shadowBlur = glowFX(12);
     ctx.beginPath();
-    ctx.arc(x, y, pl.r + 8, 0, TAU);
+    ctx.arc(x, y, visualR + 8, 0, TAU);
     ctx.stroke();
     ctx.restore();
+  }
+
+  // FRENZY-readiness shimmer — a gold pre-charge ring while OVERDRIVE is nearly
+  // full, so the player can SEE the reward about to land (anticipation telegraph
+  // that pairs with the riser cue + the charging meter).
+  if (G.overdrive >= 0.7 && !frenzy && !G.dead) {
+    const near = clamp((G.overdrive - 0.7) / 0.3, 0, 1);   // matches the meter's charge ramp
+    const p = 0.5 + 0.5 * Math.sin(G.t * (7 + near * 6));
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = '#ffd24a';
+    ctx.shadowColor = '#ffd24a';
+    ctx.shadowBlur = glowFX(10 + near * 8);
+    ctx.globalAlpha = (0.25 + near * 0.4) * (0.5 + p * 0.5);
+    ctx.lineWidth = 2 + near * 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, visualR + 6 + p * (3 + near * 4), 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   const sw = G.sweet;
@@ -594,13 +828,32 @@ function drawPlayer(): void {
       ctx.lineWidth = 2;
       ctx.shadowColor = '#fff';
       ctx.shadowBlur = 12;
-      const z = lerp(pl.r + 4, pl.r + 16, 1 - pl.zap / 0.25);
+      const z = lerp(visualR + 4, visualR + 18, 1 - pl.zap / 0.25);
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * TAU + G.t;
         ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * (pl.r + 2), Math.sin(a) * (pl.r + 2));
+        ctx.moveTo(Math.cos(a) * (visualR + 2), Math.sin(a) * (visualR + 2));
         ctx.lineTo(Math.cos(a) * z, Math.sin(a) * z);
         ctx.stroke();
+      }
+      ctx.restore();
+    }
+    if (glowFX(10) > 3) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.globalCompositeOperation = 'lighter';
+      const orbitR = visualR + 6 + Math.sin(G.t * 4) * 1.4;
+      const orbitCol = frenzy ? '#ffd24a' : sk.t;
+      ctx.fillStyle = orbitCol;
+      ctx.shadowColor = orbitCol;
+      ctx.shadowBlur = glowFX(7);
+      for (let k = 0; k < 4; k++) {
+        const a = G.t * (pl.latched ? 1.35 : 0.7) + (k / 4) * TAU;
+        const tw = 0.55 + 0.45 * Math.sin(G.t * 6 + k * 1.5);
+        ctx.globalAlpha = tw * (frenzy ? 0.95 : 0.7);
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * orbitR, Math.sin(a) * orbitR, 1.4 + tw * 0.9, 0, TAU);
+        ctx.fill();
       }
       ctx.restore();
     }
@@ -618,15 +871,39 @@ function drawPlayer(): void {
     const base = (inPerfect || happy) ? 1.08 : 1;
     const sclX = base * (1 + stretch + land * 0.38 + joyPulse - scared * 0.05);
     const sclY = base * (1 - stretch * 0.6 - land * 0.34 + joyPulse - scared * 0.16);
-    const glow = happy ? 30 : inPerfect ? 28 : 18;
+    const glow = happy ? 38 : inPerfect ? 34 : 24;
     ctx.save();
     ctx.translate(x, y);
+    ctx.globalCompositeOperation = 'lighter';
+    const auraR = visualR * (frenzy ? 4.1 : happy ? 3.3 : inPerfect ? 3.0 : 2.35);
+    const aura = ctx.createRadialGradient(0, 0, visualR * 0.5, 0, 0, auraR);
+    aura.addColorStop(0, hexA(frenzy ? '#ffd24a' : sk.c, frenzy ? 0.38 : 0.26));
+    aura.addColorStop(0.42, hexA(frenzy ? sk.c : sk.t, frenzy ? 0.18 : 0.12));
+    aura.addColorStop(1, hexA(sk.c, 0));
+    ctx.fillStyle = aura;
+    ctx.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
+    ctx.globalCompositeOperation = 'source-over';
     ctx.rotate(pl.face);
-    ctx.fillStyle = sk.c;
     ctx.shadowColor = sk.c;
     ctx.shadowBlur = glowFX(glow);
+    const body = ctx.createRadialGradient(-visualR * 0.42, -visualR * 0.45, visualR * 0.08, 0, 0, visualR * 1.12);
+    body.addColorStop(0, '#ffffff');
+    body.addColorStop(0.22, sk.t);
+    body.addColorStop(0.72, sk.c);
+    body.addColorStop(1, mixHex(sk.c, '#05030e', 0.28));
+    ctx.fillStyle = body;
     ctx.beginPath();
-    ctx.ellipse(0, 0, pl.r * sclX, pl.r * sclY, 0, 0, TAU);
+    ctx.ellipse(0, 0, visualR * sclX, visualR * sclY, 0, 0, TAU);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,.62)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, visualR * sclX + 0.5, visualR * sclY + 0.5, 0, 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.58)';
+    ctx.beginPath();
+    ctx.ellipse(-visualR * 0.32, -visualR * 0.38, visualR * 0.25, visualR * 0.14, -0.55, 0, TAU);
     ctx.fill();
     ctx.rotate(-pl.face);
     const ex = Math.cos(pl.face);
@@ -634,26 +911,64 @@ function drawPlayer(): void {
     // blink on an irregular two-cadence schedule; suppressed while scared (eyes stay wide)
     const bt = G.t * 0.9;
     const blink = scared ? 0 : (((bt % 3.1) < 0.09 || (bt % 4.7) < 0.08) ? 1 : 0);
-    const eyeR = (happy || inPerfect) ? 3.0 : 2.6 + scared * 1.1;     // wide eyes when scared
-    const pupR = happy ? 1.5 : 1.3 - scared * 0.4;                    // pinprick pupils when scared
+    const eyeR = visualR * ((happy || inPerfect) ? 0.29 : 0.25 + scared * 0.08);     // wide eyes when scared
+    const pupR = visualR * (happy ? 0.12 : 0.105 - scared * 0.03);                    // pinprick pupils when scared
     const lidH = blink ? 0.16 : 1;                                   // closed lid → thin slit
-    const lookDown = scared * 1.7;                                   // eyes dart toward the void below
+    const lookDown = scared * visualR * 0.16;                         // eyes dart toward the void below
+    const sideX = ey;
+    const sideY = -ex;
+    // GAZE: while orbiting, the pupils track the next gate — charm plus a subtle
+    // readability nudge toward where the launch is aimed. Default is a forward
+    // glance; the scared look-down (below) still overrides it.
+    let gx = ex * visualR * 0.12;
+    let gy = ey * visualR * 0.12;
+    if (pl.latched && G.target && scared < 0.2) {
+      const tdx = G.target.wx - x;
+      const tdy = sY(G.target.wy) - y;
+      const tl = Math.hypot(tdx, tdy) || 1;
+      gx = (tdx / tl) * visualR * 0.13;
+      gy = (tdy / tl) * visualR * 0.13;
+    }
     for (const o of [-1, 1]) {
-      const px = ey * o * 3.2;
-      const py = -ex * o * 3.2;
+      const px = sideX * o * visualR * 0.34;
+      const py = sideY * o * visualR * 0.34;
+      const ewx = px + ex * visualR * 0.18;        // eye-white centre
+      const ewy = py + ey * visualR * 0.18;
       ctx.fillStyle = '#fff';
       ctx.beginPath();
-      ctx.ellipse(px + ex * 2, py + ey * 2, eyeR, eyeR * lidH, 0, 0, TAU);
+      ctx.ellipse(ewx, ewy, eyeR, eyeR * lidH, 0, 0, TAU);
       ctx.fill();
       if (!blink) {
         ctx.fillStyle = '#0a0720';
         ctx.beginPath();
-        ctx.arc(px + ex * 3.2, py + ey * 3.2 + lookDown, pupR, 0, TAU);
+        ctx.arc(ewx + gx, ewy + gy + lookDown, pupR, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.8)';
+        ctx.beginPath();
+        ctx.arc(ewx + gx * 0.5 - sideX * visualR * 0.04, ewy + gy * 0.5 - sideY * visualR * 0.04, Math.max(0.9, pupR * 0.38), 0, TAU);
         ctx.fill();
       }
     }
+    const mx = ex * visualR * 0.35;
+    const my = ey * visualR * 0.35 + scared * visualR * 0.12;
+    ctx.strokeStyle = 'rgba(3,7,20,.86)';
+    ctx.fillStyle = 'rgba(3,7,20,.82)';
+    ctx.lineWidth = Math.max(1.4, visualR * 0.14);
+    ctx.lineCap = 'round';
+    if (scared > 0.25) {
+      ctx.beginPath();
+      ctx.ellipse(mx, my, visualR * 0.13, visualR * 0.2, pl.face, 0, TAU);
+      ctx.fill();
+    } else {
+      const smile = happy ? visualR * 0.24 : inPerfect ? visualR * 0.16 : visualR * 0.04;
+      const mw = visualR * (happy || inPerfect ? 0.28 : 0.18);
+      ctx.beginPath();
+      ctx.moveTo(mx - sideX * mw, my - sideY * mw);
+      ctx.quadraticCurveTo(mx + ex * smile, my + ey * smile, mx + sideX * mw, my + sideY * mw);
+      ctx.stroke();
+    }
     ctx.restore();
-    drawAccessoryAt(x, y, pl.r * base, G.t);
+    drawAccessoryAt(x, y, visualR * base * 0.92, G.t);
   }
 }
 
@@ -712,11 +1027,25 @@ function drawVoid(): void {
   const G = state.G;
   const vy = sY(G.voidY);
   const vc = world().void || '#ff3b5c';
-  if (vy >= H + 40) return;
   const t = G.t;
+  const danger = clamp(1 - (G.player.wy - G.voidY) / 240, 0, 1);
+  const warmGlow = Math.max(clamp(1 - (vy - H) / 260, 0, 0.34), danger * 0.18);
+  if (warmGlow > 0.01) {
+    const bottom = ctx.createLinearGradient(0, H - 190, 0, H);
+    bottom.addColorStop(0, hexA(vc, 0));
+    bottom.addColorStop(0.58, hexA(vc, warmGlow * 0.34));
+    bottom.addColorStop(1, hexA(vc, warmGlow));
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = bottom;
+    ctx.fillRect(0, H - 190, W, 190);
+    ctx.restore();
+  }
+  if (vy >= H + 40) return;
   // wavy surface y at a given x
   const surf = (x: number): number =>
-    vy + Math.sin(x * 0.021 + t * 1.6) * 6 + Math.sin(x * 0.052 - t * 2.4) * 3.2;
+    vy + Math.sin(x * 0.021 + t * 1.6) * (6 + danger * 3)
+      + Math.sin(x * 0.052 - t * 2.4) * (3.2 + danger * 2.2);
 
   // molten body — filled under the wave with a depth gradient
   const grad = ctx.createLinearGradient(0, vy - 54, 0, H);
@@ -733,6 +1062,42 @@ function drawVoid(): void {
   ctx.fillStyle = grad;
   ctx.fill();
 
+  // Slow molten bubbles and hairline cracks keep the void threatening without
+  // raising a solid wall over the playfield.
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const bubbleN = pcount(5 + Math.round(danger * 8));
+  for (let i = 0; i < bubbleN; i++) {
+    const ex = (i * 91.7 + Math.sin(t + i) * 18) % W;
+    const ph = (t * (0.16 + (i % 4) * 0.035) + i * 0.23) % 1;
+    const ey = surf(ex) + 20 + ph * Math.max(42, H - surf(ex) - 12);
+    const br = 3 + Math.sin(t * 2 + i) * 1.2 + (i % 3);
+    ctx.globalAlpha = 0.2 + danger * 0.16;
+    ctx.strokeStyle = '#ffd9a0';
+    ctx.shadowColor = vc;
+    ctx.shadowBlur = glowFX(8);
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.arc(ex, ey, br, 0, TAU);
+    ctx.stroke();
+  }
+  const crackN = pcount(4 + Math.round(danger * 5));
+  for (let i = 0; i < crackN; i++) {
+    const ex = (i * 123.3 + t * 18) % W;
+    const ey = surf(ex) + 28 + ((i * 47) % Math.max(32, H - surf(ex) - 40));
+    ctx.globalAlpha = 0.12 + danger * 0.16;
+    ctx.strokeStyle = '#ffe39b';
+    ctx.lineWidth = 1.2;
+    ctx.shadowColor = '#ffd24a';
+    ctx.shadowBlur = glowFX(7);
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex + Math.sin(i) * 18, ey + 8);
+    ctx.lineTo(ex + Math.cos(i * 1.7) * 26, ey + 17);
+    ctx.stroke();
+  }
+  ctx.restore();
+
   // hot crest — a bright molten line riding the wave
   ctx.beginPath();
   ctx.moveTo(0, surf(0));
@@ -742,18 +1107,27 @@ function drawVoid(): void {
   ctx.shadowColor = vc;
   ctx.shadowBlur = glowFX(20);
   ctx.stroke();
-  // inner white-hot highlight
-  ctx.globalAlpha = 0.5;
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1.2;
-  ctx.shadowBlur = glowFX(8);
+  // crisp white-hot highlight: the readable threat boundary.
+  ctx.globalAlpha = 0.68 + danger * 0.18;
+  ctx.strokeStyle = '#fff8f0';
+  ctx.lineWidth = 1.8;
+  ctx.shadowColor = vc;
+  ctx.shadowBlur = glowFX(14);
+  ctx.stroke();
+  ctx.globalAlpha = 0.72;
+  ctx.strokeStyle = vc;
+  ctx.lineWidth = 1.1;
+  ctx.shadowBlur = glowFX(7);
+  ctx.beginPath();
+  ctx.moveTo(0, surf(0) + 4);
+  for (let x = 0; x <= W; x += 14) ctx.lineTo(x, surf(x) + 4);
   ctx.stroke();
   ctx.globalAlpha = 1;
   ctx.shadowBlur = 0;
   ctx.restore();
 
   // rising embers — procedural (no pool); skipped on the lowest FX tier
-  const emberN = pcount(14);
+  const emberN = pcount(16 + Math.round(danger * 16));
   if (emberN > 0 && glowFX(10) > 3) {
     ctx.save();
     ctx.fillStyle = '#ffd9a0';
@@ -762,7 +1136,7 @@ function drawVoid(): void {
     for (let i = 0; i < emberN; i++) {
       const ex = ((i * 137.5) % W);
       const ph = (t * (0.4 + (i % 5) * 0.05) + i * 0.37) % 1;
-      const ey = surf(ex) - ph * 70;
+      const ey = surf(ex) - ph * (70 + danger * 80);
       const a = (1 - ph) * 0.7;
       if (a <= 0.02) continue;
       ctx.globalAlpha = a;
@@ -990,21 +1364,30 @@ function drawFrenzyBloom(): void {
   if (G.frenzyT <= 0) return;
   const { ctx, W, H } = view;
   const cols = ['#ffd24a', '#ff4d8d', '#2ff3e0'];
+  const elapsed = G.frenzyMax - G.frenzyT;
+  const intro = clamp(1 - elapsed / 0.75, 0, 1) * fx.motion;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.09 + Math.sin(G.t * 12) * 0.035;
+  ctx.globalAlpha = 0.13 + Math.sin(G.t * 12) * 0.045;
   ctx.fillStyle = cols[(G.t * 4 | 0) % cols.length];
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2;
+  const cy = H * 0.42;
+  const burst = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * (0.42 + intro * 0.32));
+  burst.addColorStop(0, hexA('#ffffff', 0.12 + intro * 0.34));
+  burst.addColorStop(0.28, hexA('#ffd24a', 0.1 + intro * 0.2));
+  burst.addColorStop(0.62, hexA('#ff4d8d', 0.06 + intro * 0.16));
+  burst.addColorStop(1, hexA('#2ff3e0', 0));
+  ctx.fillStyle = burst;
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
   if (glowFX(10) <= 3) { ctx.globalAlpha = 1; return; }   // skip beams on low FX
-  const cx = W / 2;
-  const cy = H * 0.42;
   const R = Math.hypot(W, H);
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(G.t * 0.6);
   ctx.globalCompositeOperation = 'lighter';
-  const beams = 7;
+  const beams = 9;
   for (let i = 0; i < beams; i++) {
     const c = cols[i % cols.length];
     ctx.save();
@@ -1020,6 +1403,25 @@ function drawFrenzyBloom(): void {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 18; i++) {
+    const p = (G.t * (0.42 + (i % 4) * 0.08) + i * 0.071) % 1;
+    const x = ((i * 73.3) % W) + Math.sin(i) * 18;
+    const y = lerp(-80, H + 80, p);
+    const c = cols[i % cols.length];
+    ctx.globalAlpha = (1 - p) * 0.28;
+    ctx.strokeStyle = c;
+    ctx.shadowColor = c;
+    ctx.shadowBlur = glowFX(9);
+    ctx.lineWidth = 1.2 + (i % 3) * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - 18, y + 82);
+    ctx.stroke();
   }
   ctx.restore();
   ctx.globalCompositeOperation = 'source-over';
@@ -1038,23 +1440,41 @@ function drawMeters(): void {
     rr(mx, my, mw, 5, 3);
     ctx.fillStyle = 'rgba(255,255,255,.08)';
     ctx.fill();
-    if (G.overdrive > 0) {
-      rr(mx, my, mw * G.overdrive, 5, 3);
+    const od = G.overdrive;
+    // Anticipation ramp: the meter only starts "charging" visually past 70%, then
+    // pulses faster/brighter the closer it is to triggering FRENZY.
+    const near = clamp((od - 0.7) / 0.3, 0, 1);
+    const pulse = near > 0 ? 0.5 + 0.5 * Math.sin(G.t * (6 + near * 18)) : 0;
+    if (od > 0) {
+      rr(mx, my, mw * od, 5, 3);
       const grd = ctx.createLinearGradient(mx, 0, mx + mw, 0);
       grd.addColorStop(0, '#ff4d8d');
       grd.addColorStop(1, '#ffd24a');
       ctx.fillStyle = grd;
       ctx.shadowColor = '#ffd24a';
-      ctx.shadowBlur = glowFX(10);
+      ctx.shadowBlur = glowFX(10 + near * 16 * (0.6 + pulse * 0.4));
       ctx.fill();
       ctx.shadowBlur = 0;
+      if (near > 0) {
+        // bright charge spark riding the leading edge — intensifies toward full
+        ctx.save();
+        ctx.globalAlpha = 0.4 + near * 0.6 * (0.5 + pulse * 0.5);
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#ffd24a';
+        ctx.shadowBlur = glowFX(8 + near * 10);
+        ctx.beginPath();
+        ctx.arc(mx + mw * od, my + 2.5, 2 + near * 2, 0, TAU);
+        ctx.fill();
+        ctx.restore();
+      }
     }
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = "700 9px 'Unbounded', sans-serif";
-    ctx.fillStyle = G.overdrive >= 1 ? '#ffd24a' : '#7e88b5';
-    ctx.fillText('OVERDRIVE', W / 2, my + 12);
+    ctx.fillStyle = od >= 0.82 ? '#ffd24a' : od >= 0.5 ? mixHex('#7e88b5', '#ffd24a', near) : '#7e88b5';
+    if (od >= 0.82) { ctx.shadowColor = '#ffd24a'; ctx.shadowBlur = glowFX(6 + pulse * 6); }
+    ctx.fillText(od >= 0.82 ? '⚡ OVERDRIVE ⚡' : 'OVERDRIVE', W / 2, my + 12);
     ctx.restore();
   } else {
     const fp = clamp(G.frenzyT / G.frenzyMax, 0, 1);
@@ -1189,10 +1609,14 @@ export function renderPlay(): void {
   const closeness = clamp(1 - (G.player.wy - G.voidY) / 240, 0, 1);
   if (closeness > 0.05) {
     ctx.save();
-    const a = closeness * 0.5 * (0.7 + Math.sin(G.t * 8) * 0.3);
+    const a = closeness * 0.6 * (0.7 + Math.sin(G.t * 8) * 0.3);
     const vc = world().void || '#ff3b5c';
-    const grad = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.7);
+    const grad = ctx.createRadialGradient(
+      W / 2, H * 0.5, Math.min(W, H) * 0.32,
+      W / 2, H * 0.5, Math.max(W, H) * 0.72,
+    );
     grad.addColorStop(0, hexA(vc, 0));
+    grad.addColorStop(0.6, hexA(vc, 0));
     grad.addColorStop(1, hexA(vc, a));
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
@@ -1206,7 +1630,23 @@ export function renderPlay(): void {
     const dots = '✦'.repeat(G.constelProg) + '◦'.repeat(3 - G.constelProg);
     text('CONSTELLATION  ' + dots, W / 2, 88 + SAFE_TOP, 11, '#cdb4ff', 800, 6);
   }
-  text('◎ ' + (Profile.coins + G.coins), W - 16, 28 + SAFE_TOP, 14, '#ffe39b', 700, 6, 'right');
+  // coin balance — animated count-up with a scale punch as it rolls (casino juice)
+  {
+    const coinStr = '◎ ' + Math.round(G.coinDisp);
+    const cpx = W - 16;
+    const cpy = 28 + SAFE_TOP;
+    if (G.coinPunch > 0.01) {
+      ctx.save();
+      const s = 1 + G.coinPunch * 0.32;
+      ctx.translate(cpx, cpy);
+      ctx.scale(s, s);
+      ctx.translate(-cpx, -cpy);
+      text(coinStr, cpx, cpy, 14, mixHex('#ffe39b', '#ffffff', G.coinPunch * 0.6), 700, 6 + G.coinPunch * 8, 'right');
+      ctx.restore();
+    } else {
+      text(coinStr, cpx, cpy, 14, '#ffe39b', 700, 6, 'right');
+    }
+  }
   drawMeters();
 
   // active power-up timers (left edge, under the toggles' space)

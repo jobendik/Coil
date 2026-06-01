@@ -37,11 +37,19 @@ try {
     eager: true, query: '?url', import: 'default',
   }) as Record<string, string>;
 } catch { /* non-Vite bundler */ }
-const TRACKS: string[] = [musicUrl, ...Object.keys(extraMusic).sort().map((k) => extraMusic[k])];
+const extraKeys = Object.keys(extraMusic).sort();
+const TRACKS: string[] = [musicUrl, ...extraKeys.map((k) => extraMusic[k])];
+// Track 0 (background_music.mp3) is always a normal track.
+// Extra tracks whose path contains "zen" are Zen-only; all others join the normal rotation.
+const ZEN_IDXS: number[] = [];
+const NORMAL_IDXS: number[] = [0];
+extraKeys.forEach((k, i) => {
+  if (k.toLowerCase().includes('zen')) ZEN_IDXS.push(i + 1);
+  else NORMAL_IDXS.push(i + 1);
+});
 
 let started = false;
 let zen = false;
-let intensity = 0;          // 0..1 combo/FRENZY energy, set by the loop each frame
 
 // Lazily-created, cached <audio> elements keyed by track index. cur = the track
 // fading toward target volume; prev = the outgoing track during a crossfade.
@@ -65,10 +73,12 @@ function trackEl(i: number): HTMLAudioElement | null {
   }
 }
 
-function pickNext(): number {
-  if (TRACKS.length <= 1) return 0;
+function pickNext(isZen: boolean): number {
+  const pool = isZen ? ZEN_IDXS : NORMAL_IDXS;
+  if (pool.length === 0) return curIdx;
+  if (pool.length === 1) return pool[0];
   let i = curIdx;
-  while (i === curIdx) i = Math.floor(Math.random() * TRACKS.length);
+  while (i === curIdx) i = pool[Math.floor(Math.random() * pool.length)];
   return i;
 }
 
@@ -154,86 +164,13 @@ const Zen = {
   },
 };
 
-/* ---------- procedural INTENSITY layer (anti-fatigue) ----------
-   One 4 MB track loops the whole session, so audio goes stale right around the
-   10-minute playtime window CrazyGames measures. Rather than a second asset (or
-   the playbackRate/volume hacks deliberately removed in 33a19d8), we LAYER a tiny
-   WebAudio "energy" bed on top: bright band-passed noise with a tremolo whose gain
-   + pulse rate rise with combo/FRENZY. It's purely textural (no pitched content),
-   so it can never clash with the track's key — it just makes the bed feel like it
-   lifts when you're doing well, and settles when you're not. Driven by
-   Music.setIntensity() from the loop; silent in menus and Zen. */
-const Intensity = {
-  nodes: null as null | {
-    master: GainNode;
-    src: AudioBufferSourceNode;
-    trem: OscillatorNode;
-  },
-  vol: 0,
-
-  ensure(): void {
-    if (this.nodes) return;
-    const a = ac();
-    if (!a) return;
-    try {
-      const master = a.createGain();
-      master.gain.value = 0;
-      master.connect(a.destination);
-
-      // looping white noise → bandpass (bright "air") → tremolo gain → master
-      const len = Math.floor(a.sampleRate * 2);
-      const buf = a.createBuffer(1, len, a.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      const src = a.createBufferSource();
-      src.buffer = buf;
-      src.loop = true;
-      const bp = a.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 3200;
-      bp.Q.value = 0.8;
-      const tremGain = a.createGain();
-      tremGain.gain.value = 0.55;
-      const trem = a.createOscillator();
-      trem.type = 'sine';
-      trem.frequency.value = 5;
-      const tremDepth = a.createGain();
-      tremDepth.gain.value = 0.4;
-      trem.connect(tremDepth);
-      tremDepth.connect(tremGain.gain);
-      src.connect(bp); bp.connect(tremGain); tremGain.connect(master);
-      src.start();
-      trem.start();
-      this.nodes = { master, src, trem };
-    } catch {
-      this.nodes = null;
-    }
-  },
-
-  upd(dt: number, level: number): void {
-    if (level > 0.001) this.ensure();
-    if (!this.nodes) { this.vol = 0; return; }
-    const target = level * 0.1;               // a subtle topping that stays under the track
-    this.vol += (target - this.vol) * Math.min(1, dt * 2.2);
-    try {
-      this.nodes.master.gain.value = clamp(this.vol, 0, 1);
-      this.nodes.trem.frequency.value = 4 + level * 5;   // pulses faster as it builds
-    } catch { /* ignore */ }
-  },
-
-  silence(): void {
-    this.vol = 0;
-    try { if (this.nodes) this.nodes.master.gain.value = 0; } catch { /* ignore */ }
-  },
-};
-
 export const Music = {
   /** Begin the bed on the first user gesture (satisfies autoplay policy). Picks
    *  one starting track and creates ONLY that element, so we never fetch a track
    *  we won't play (the default is 4 MB — don't load it just to cycle away). */
   start(): void {
     started = true;
-    if (curIdx < 0) curIdx = TRACKS.length > 1 ? Math.floor(Math.random() * TRACKS.length) : 0;
+    if (curIdx < 0) curIdx = NORMAL_IDXS[Math.floor(Math.random() * NORMAL_IDXS.length)];
     trackEl(curIdx);
   },
 
@@ -241,11 +178,13 @@ export const Music = {
    *  variety. No-op with a single track, and on the very first run (the track
    *  start() chose hasn't faded in yet — keep it rather than load a second). */
   cycle(): void {
-    if (!started || TRACKS.length < 2) return;
+    if (!started) return;
+    const pool = zen ? ZEN_IDXS : NORMAL_IDXS;
+    if (pool.length < 2) return;
     if (curVol < 0.01 && prevIdx < 0) return;     // first run: don't swap off the fresh pick
     prevIdx = curIdx;
     prevVol = curVol;
-    curIdx = pickNext();
+    curIdx = pickNext(zen);
     curVol = 0;
     trackEl(curIdx);
   },
@@ -255,18 +194,34 @@ export const Music = {
    *  are silenced directly here (otherwise the shimmer would bleed under an ad). */
   pause(): void {
     for (const k in elCache) { const e = elCache[k]; if (e && !e.paused) e.pause(); }
-    Intensity.silence();
     Zen.silence();
   },
 
-  /** Toggle the Zen ambient bed (replaces the catchy track in the calm mode). */
+  /** Switch to/from Zen mode: crossfades to a zen track (or back to a normal track).
+   *  No-op when the mode hasn't changed (called every frame from the loop). */
   setZen(on: boolean): void {
+    if (zen === on) return;
     zen = on;
+    if (!started) return;
+    // If the current track belongs to the wrong pool, switch to the correct one.
+    const zenCurrent = ZEN_IDXS.includes(curIdx);
+    if (on !== zenCurrent) {
+      const pool = on ? ZEN_IDXS : NORMAL_IDXS;
+      if (pool.length > 0) {
+        prevIdx = curIdx;
+        prevVol = curVol;
+        curIdx = pickNext(on);
+        curVol = 0;
+        trackEl(curIdx);
+      }
+    }
   },
 
-  /** Set the combo/FRENZY energy that drives the procedural intensity layer (0..1). */
-  setIntensity(x: number): void {
-    intensity = clamp(x, 0, 1);
+  /** Combo/FRENZY energy hook from the loop. The procedural intensity layer was
+   *  retired in favour of multi-track rotation (see Music.cycle), so this is now a
+   *  no-op kept for call-site compatibility with main.ts. */
+  setIntensity(_x: number): void {
+    /* intensity shaker disabled — multi-track variety replaces it */
   },
 
   /** Per-frame fade + play/pause sync against the mute setting + tab visibility. */
@@ -274,11 +229,12 @@ export const Music = {
     const allow = !settings.musicMuted && !document.hidden;
     // Zen ambient (only while in the Zen bed and music is allowed).
     Zen.upd(dt, allow && zen);
-    // Intensity layer — only in real (non-Zen) gameplay; fades to 0 elsewhere.
-    Intensity.upd(dt, allow && !zen ? intensity : 0);
 
     if (!started) return;
-    const want = allow && !zen;
+    // In zen mode, only play the track if it's a zen track (zen_drift etc.).
+    // With no zen tracks in the pool, zen mode uses only the procedural ambient.
+    const isZenTrack = ZEN_IDXS.includes(curIdx);
+    const want = allow && (zen ? isZenTrack : !isZenTrack);
 
     // Outgoing track during a crossfade — fade to silence, then release.
     if (prevIdx >= 0) {
