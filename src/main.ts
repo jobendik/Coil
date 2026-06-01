@@ -7,17 +7,18 @@ import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
 import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
 import { renderPlay, setZenExitHandler } from './scenes/play';
-import { renderShop } from './scenes/shop';
+import { renderShop, shopDown, shopMove, shopUp, shopResetScroll } from './scenes/shop';
 import { renderEvo, evoDown, evoMove, evoUp } from './scenes/evo';
-import { ac } from './core/audio';
+import { ac, loadSamples } from './core/audio';
 import { Music } from './core/music';
 import { CG } from './core/cg';
 import { fxUpd } from './core/fx';
 import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
-import { rand, text } from './core/utils';
+import { clamp, rand, text } from './core/utils';
 import { Telemetry } from './core/telemetry';
 import { claimEarnedUnlocks } from './game/unlocks';
+import { Profile } from './game/profile';
 import { DEBUG, DOOM_TIMESCALE } from './config';
 
 Telemetry.session();
@@ -38,6 +39,8 @@ function startPlay(daily = false, zen = false): void {
   resetRun(daily, zen);
   maybeShowStartToast();
   Telemetry.runStart(daily);
+  Profile.noteRun();          // reveals the full home meta after the first run
+  Music.cycle();              // crossfade to a fresh track each run (anti-fatigue; no-op w/ 1 track)
   state.scene = 'play';
   CG.gameplayStart();
 }
@@ -103,6 +106,7 @@ function primaryAction(): void {
   } else if (state.scene === 'home') {
     startPlay(false);
   } else if (state.scene === 'shop') {
+    shopResetScroll();
     state.scene = 'home';
   }
 }
@@ -110,6 +114,7 @@ function primaryAction(): void {
 function onDown(e: PointerEvent): void {
   ac();
   Music.start();
+  loadSamples();
   e.preventDefault();
   if (inputLock) return;
   inputLock = true;
@@ -119,6 +124,12 @@ function onDown(e: PointerEvent): void {
   // to pointerup so we can tell a tap (equip) from a drag (scroll).
   if (state.scene === 'evo') {
     evoDown(x);
+    return;
+  }
+  // Shop grid scrolls vertically: defer the hit-test to pointerup so a drag scrolls
+  // and only a tap activates a card/tab/back button.
+  if (state.scene === 'shop') {
+    shopDown(y);
     return;
   }
   if (state.scene !== 'play') {
@@ -132,18 +143,19 @@ function onDown(e: PointerEvent): void {
 }
 
 view.cv.addEventListener('pointerdown', onDown, { passive: false });
-view.cv.addEventListener('pointercancel', () => { inputLock = false; evoUp(); }, { passive: false });
+view.cv.addEventListener('pointercancel', () => { inputLock = false; evoUp(); shopUp(); }, { passive: false });
 view.cv.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// Evolution-panel drag: track horizontal movement, and on release treat a
-// negligible move as a tap (run the button hit-test at the release point).
+// Evolution panel (horizontal) and Shop grid (vertical) both drag-to-scroll: track
+// movement, and on release treat a negligible move as a tap (run the hit-test there).
 view.cv.addEventListener('pointermove', (e) => {
   if (state.scene === 'evo') evoMove(pos(e).x);
+  else if (state.scene === 'shop') shopMove(pos(e).y);
 }, { passive: true });
 view.cv.addEventListener('pointerup', (e) => {
-  if (state.scene !== 'evo') return;
   const { x, y } = pos(e);
-  if (evoUp()) hitButtons(x, y);
+  if (state.scene === 'evo') { if (evoUp()) hitButtons(x, y); }
+  else if (state.scene === 'shop') { if (shopUp()) hitButtons(x, y); }
 }, { passive: false });
 
 // Desktop keyboard (CrazyGames has heavy desktop traffic): Space / Enter / ArrowUp
@@ -152,6 +164,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     ac();
     Music.start();
+    loadSamples();
     if (inputLock) return;
     inputLock = true;
     setTimeout(() => { inputLock = false; }, 40);
@@ -214,11 +227,16 @@ function frame(now: number): void {
   P.upd(dt);
   Pop.upd(dt);
   fxUpd(dt);
-  // Zen bed swaps in during calm mode; everything settles outside of play.
+  // Zen bed swaps in during calm mode; everything settles outside of play. The
+  // intensity layer rises with the combo and pins to full during FRENZY, so the
+  // single music track gains variation right when the player is performing well.
   if (state.scene === 'play' && state.G) {
-    Music.setZen(state.G.zen);
+    const g = state.G;
+    Music.setZen(g.zen);
+    Music.setIntensity((g.zen || g.dead) ? 0 : g.frenzyT > 0 ? 1 : clamp((g.combo - 3) / 9, 0, 0.7));
   } else {
     Music.setZen(false);
+    Music.setIntensity(0);
   }
   Music.upd(dt);
   updateShake(dt);

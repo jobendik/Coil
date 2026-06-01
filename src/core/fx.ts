@@ -9,7 +9,7 @@
      overlay layer (on top):    Callout, Flash
    ========================================================================= */
 import { view } from './canvas';
-import { TAU, clamp, fx, glowFX, hexA, lerp, pcount, rand, text } from './utils';
+import { TAU, clamp, fx, glowFX, lerp, pcount, rand, text } from './utils';
 import { SFX } from './audio';
 
 /** Screen-space anchor for the coin-balance counter (top-right HUD). */
@@ -242,6 +242,10 @@ export const FlyCoins = {
       const c = this.a[i]; c.t += dt;
       if (c.t < c.delay) continue;
       c.rot += c.spin * dt;
+      // Hard timeout: a coin is normally removed on reaching the target (d<14), but
+      // a slow-frame overshoot could orbit it forever. Cap the homing so a fly-coin
+      // always resolves (deposits) and can never linger/accumulate on low-end devices.
+      if (c.t - c.delay > 1.8) { this.a[i] = this.a[this.a.length - 1]; this.a.pop(); SFX.deposit(); Sparkles.pop(c.tx, c.ty, '#fff3b0'); continue; }
       if (c.t - c.delay <= 0.16) { c.vy += 900 * dt; c.x += c.vx * dt; c.y += c.vy * dt; } else {
         const dx = c.tx - c.x; const dy = c.ty - c.y; const d = Math.hypot(dx, dy) || 1;
         const pull = lerp(10, 30, clamp((c.t - c.delay - 0.16) / 0.5, 0, 1));
@@ -298,9 +302,6 @@ export const Callout = {
   },
   clear(): void { this.a.length = 0; },
 };
-
-/* helper so void/world tints can reuse the colour util without re-importing */
-export { hexA };
 
 /** Advance every FX pool. Called once per frame from the main loop. */
 export function fxUpd(dt: number): void {

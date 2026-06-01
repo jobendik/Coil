@@ -11,6 +11,50 @@
 
 ---
 
+## Progress update — branch `claude/elegant-brown-r5Hmy` (2026-06-01)
+
+Shipped (code-only; verified `tsc` clean, all tests green incl. gate-honesty with
+decay gates, `dist-cg` ~41 KB gz JS, source map dropped):
+
+- **1.1 Sampled-SFX layer — DONE (infra).** Drop-in path in `audio.ts`: lazy-loads
+  files from `src/assets/sfx/` (by filename) after first gesture, procedural
+  fallback per event. *Awaiting the actual audio files* (see that folder's README).
+- **1.2 Music anti-fatigue — DONE.** Procedural intensity layer (combo/FRENZY) +
+  multi-track rotation: extra files in `src/assets/music/` auto-join, crossfaded per
+  run. *More tracks optional* (README has specs + the download budget).
+- **1.3 Expressive creature — DONE.** Blink, fear-near-void, joy-on-FRENZY, landing squash.
+- **1.4 New depth beat — DONE.** Decay (unstable) gate; honest-gate invariant re-proven.
+- **1.5 Void tension — DONE.** Late-game squeeze strengthened; `FRENZY_VOID_EASE`
+  was dead config — now actually applied.
+- **2.1 First-session home — DONE.** Minimal home (logo + creature + PLAY) until run 1.
+- **3.2 / 3.3 — DONE.** Lifetime constellation count surfaced on home; menu creature blinks.
+- **5.5 Source-map hygiene — DONE.** Production build no longer emits the `.map`.
+- **6.3 Colour-blind gate — DONE.** A home-screen toggle delineates the perfect
+  window by SHAPE (white boundary + centre ticks) + forced white, so it's readable
+  without relying on hue.
+- **6.5 Animated shop previews — DONE.** Trails flow/twinkle and accessory orbits
+  rotate / auras breathe in the grid (drives purchase desire).
+- **4.1 Progression-pacing audit — DONE.** Added `scripts/pacing-audit.test.ts`
+  (CI-checked, like gate-honesty): maps every unlock vs the real coin economy and
+  simulates a plateauing new player. Findings: early game is dense (unlocks at runs
+  1,1,2,4,5,5,6,7,8,9…), even 100 m evolution ladder, longest mid-progression gap
+  2 runs. **Bug found + fixed:** `shop.buy()` had `if (item.req) return`, so the
+  coin-priced skill-route items (Void/Prism/Prism Ribbon/Aurora/Star Lace) were
+  *permanently locked* for anyone who couldn't hit the height/combo/streak —
+  contradicting config's "price is the fallback". Now **dual-route**: reach the req
+  for free, or buy with coins (shop shows an "or ◎N" chip). Price-0 items (evo1-12,
+  Nova, Crown, Visor) stay pure-skill prestige by design.
+- **5.1 Test runner — CORRECTION:** it is **not** broken. `npm test` passes after
+  `npm install` (esbuild is a devDependency); CI runs `npm ci` first. The honest-gate
+  property is testable in CI today (0 violations across ~890k lit angles, incl. decay).
+
+Still open (asset/external, can't be done in-repo): **Tier 0** thumbnail / preview /
+screenshots / on-platform QA, plus the actual SFX/music files (drop-in paths ready).
+Remaining code items are post-launch only (4.3 weekly rotation, 6.4 what's-new) —
+best driven by live telemetry — see their tiers below.
+
+---
+
 ## How to read this document
 
 Each item is tagged:

@@ -2,7 +2,7 @@ import { view } from '../core/canvas';
 import { state } from '../game/state';
 import { Profile } from '../game/profile';
 import { Owned, equipSkin, skinState } from '../game/skins';
-import { MILESTONE_SKINS } from '../config';
+import { MILESTONE_SKINS, MILESTONE_STEP } from '../config';
 import { TAU, clamp, glowFX, hexA, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { SFX } from '../core/audio';
@@ -162,7 +162,9 @@ export function renderEvo(dt: number): void {
     const s = MILESTONE_SKINS[i];
     const owned = Owned.includes(s.id);
     const eq = skinState.equipped === s.id;
-    const ms = s.req!.value as number;
+    // Milestone skins are all height-gated; fall back to the step-derived height
+    // rather than assert non-null, so a future entry without a req can't crash here.
+    const ms = (s.req?.value as number) ?? (i + 1) * MILESTONE_STEP;
     const x = PAD + i * (CARD_W + GAP) - scroll.x;
     if (x > W + 10 || x + CARD_W < -10) continue;   // offscreen — skip
     const cx = x + CARD_W / 2;
@@ -240,7 +242,7 @@ export function renderEvo(dt: number): void {
   // next-up carrot line
   if (earned < total) {
     const next = MILESTONE_SKINS[earned];
-    const ms = next.req!.value as number;
+    const ms = (next.req?.value as number) ?? (earned + 1) * MILESTONE_STEP;
     const left = Math.max(0, ms - Profile.best);
     const line = left > 0 ? 'Next: reach ' + ms + ' m to evolve' : 'Reach ' + ms + ' m to evolve next';
     text(line, W / 2, H * 0.82 - SAFE_BOTTOM, 12, '#ffe39b', 700, 6);

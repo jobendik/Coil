@@ -167,6 +167,9 @@ export const Result = {
       } else if (r.kind === 'streak') {
         frac = clamp(Profile.streak / (r.value as number), 0, 1);
         phrase = `Keep a ${r.value}-day streak to unlock ${it.name}`;
+      } else if (r.kind === 'constel') {
+        frac = clamp(Profile.constellations / (r.value as number), 0, 1);
+        phrase = `Complete ${r.value} constellations to unlock ${it.name}`;
       } else {
         frac = 0.3;
         phrase = `Earn an achievement to unlock ${it.name}`;
@@ -321,9 +324,9 @@ export const Result = {
       text('MISSION COMPLETE  ◎+' + d.dailyReward,
         W / 2, by + (d.leveledUp ? 26 : 4), 14, '#9be35a', 700, 8);
     }
-    const G = state.G;
     // Zen has no death, so there's nothing to revive from — only offer DOUBLE COINS.
-    const canRevive = !G.revivedThisRun && !d.zen;
+    // Guard state.G (every other scene does): if there's somehow no run, don't offer revive.
+    const canRevive = !!state.G && !state.G.revivedThisRun && !d.zen;
     // After revive is used, the prominent rewarded slot offers DOUBLE COINS instead.
     const canDouble = !canRevive && !this.doubled && d.coins > 0;
     const hasTopCTA = canRevive || canDouble;

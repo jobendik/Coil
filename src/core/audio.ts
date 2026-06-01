@@ -141,6 +141,78 @@ export function bigWinAudio(intensity: number): void {
   o.stop(t + 0.24);
 }
 
+/* ---------- optional sampled-SFX layer ----------
+   The procedural tones above are the zero-weight FALLBACK and always work. Drop
+   real audio files into src/assets/sfx/ named after the events below
+   (perfect / combo / coin / death / unlock / fling / bonus / catch · .mp3|ogg|wav)
+   and they're lazily fetched + decoded after the first user gesture and played
+   INSTEAD — giving the load-bearing moments sampled weight without delaying first
+   paint, and with a guaranteed procedural fallback if a file is missing or fails
+   to decode (off-platform, adblock, slow net). Add only the ones you have; each
+   event independently uses a sample if present, else the procedural tone.
+   import.meta.glob is a Vite transform; the try/catch keeps the headless test
+   bundler happy (where it's undefined → no samples → procedural path). */
+let sfxFiles: Record<string, string> = {};
+try {
+  sfxFiles = import.meta.glob('../assets/sfx/*.{mp3,ogg,wav}', {
+    eager: true, query: '?url', import: 'default',
+  }) as Record<string, string>;
+} catch { /* non-Vite bundler */ }
+const sampleUrls: Record<string, string> = {};
+for (const path in sfxFiles) {
+  const base = (path.split('/').pop() ?? '').replace(/\.(mp3|ogg|wav)$/i, '');
+  if (base) sampleUrls[base] = sfxFiles[path];
+}
+
+const Samples = {
+  buf: {} as Record<string, AudioBuffer>,
+  done: false,
+
+  /** Lazily fetch + decode every dropped-in sample (call after the first gesture). */
+  load(): void {
+    if (this.done) return;
+    this.done = true;
+    const a = ac();
+    if (!a) return;
+    for (const name in sampleUrls) {
+      fetch(sampleUrls[name])
+        .then((r) => r.arrayBuffer())
+        .then((ab) => a.decodeAudioData(ab))
+        .then((b) => { this.buf[name] = b; })
+        .catch(() => { /* keep the procedural fallback for this event */ });
+    }
+  },
+
+  /** Play a sample if one is loaded for `name`. Returns true if the event was
+   *  handled (sample fired, or we're muted) so the caller skips the procedural
+   *  fallback. `rate` > 1 brightens playback (mirrors the combo pitch ramps). */
+  play(name: string, vol = 0.9, rate = 1): boolean {
+    if (settings.muted) return true;
+    const b = this.buf[name];
+    if (!b) return false;
+    const a = ac();
+    if (!a) return false;
+    try {
+      const s = a.createBufferSource();
+      s.buffer = b;
+      s.playbackRate.value = rate;
+      const g = a.createGain();
+      g.gain.value = vol;
+      s.connect(g);
+      g.connect(a.destination);
+      s.start();
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
+
+/** Kick off sample loading — call once after the first user gesture, like music. */
+export function loadSamples(): void {
+  Samples.load();
+}
+
 const SFX_LAST: Record<string, number> = {};
 function thr(name: string, ms: number): boolean {
   const t = performance.now();
@@ -152,35 +224,43 @@ function thr(name: string, ms: number): boolean {
 export const SFX = {
   fling(): void {
     if (!thr('fling', 40)) return;
+    if (Samples.play('fling', 0.7)) return;
     noise(0.1, 0.08, 1400);
     tone(300, 0.1, 'sawtooth', 0.07, 180);
   },
   catch(c: number): void {
     if (!thr('catch', 40)) return;
+    if (Samples.play('catch', 0.85, 1 + Math.min(c, 12) * 0.02)) return;
     tone(440 + Math.min(c, 12) * 40, 0.08, 'triangle', 0.14, 90);
   },
   perfect(c: number): void {
     if (!thr('perfect', 50)) return;
+    if (Samples.play('perfect', 0.9, 1 + Math.min(c, 12) * 0.025)) return;
     tone(720 + Math.min(c, 12) * 55, 0.1, 'triangle', 0.18, 240);
     setTimeout(() => tone(1180, 0.09, 'sine', 0.13), 50);
   },
   coin(): void {
     if (!thr('coin', 35)) return;
+    if (Samples.play('coin', 0.8)) return;
     tone(900, 0.05, 'square', 0.1, 200);
   },
   bonus(): void {
+    if (Samples.play('bonus', 0.9)) return;
     [784, 988, 1318].forEach((f, i) => setTimeout(() => tone(f, 0.12, 'triangle', 0.16), i * 55));
   },
   shield(): void {
     tone(300, 0.2, 'sine', 0.16, 500);
   },
   milestone(): void {
+    if (Samples.play('combo', 0.95)) return;
     [659, 880, 1175].forEach((f, i) => setTimeout(() => tone(f, 0.15, 'triangle', 0.17), i * 65));
   },
   unlock(): void {
+    if (Samples.play('unlock', 0.95)) return;
     [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.14, 'triangle', 0.16), i * 80));
   },
   death(): void {
+    if (Samples.play('death', 0.95)) return;
     noise(0.35, 0.3, 1200);
     tone(120, 0.35, 'sawtooth', 0.22, -70);
   },

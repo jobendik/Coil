@@ -70,12 +70,13 @@ export const Daily = {
     for (const m of this.d.missions) {
       if (m.done) continue;
       const g = GOALS[m.idx];
-      // Match the kind family — the old single 'height' kind is reused for any 'heightX' goal id.
-      const family = g.id.replace(/[EMH]$/, '');
-      if (kind !== family) continue;
+      // Match the metric family. Every goal id is `<kind><tier?>` (e.g. heightE /
+      // comboH / runs), so a prefix test is robust — unlike stripping a trailing
+      // [EMH], which would mis-match any future id whose metric ends in those letters.
+      if (!g.id.startsWith(kind)) continue;
       if (g.kind === 'cum') m.prog += val;
       else m.prog = Math.max(m.prog, val);
-      if (m.prog >= g.t && !m.done) {
+      if (m.prog >= g.t) {
         m.done = true;
         Profile.addCoins(g.reward);
         totalReward += g.reward;
