@@ -1,6 +1,5 @@
 import type { Node, SweetZone } from '../types';
-import { view } from '../core/canvas';
-import { state } from './state';
+import { state, fieldLeft, fieldRight } from './state';
 import { TAU, clamp, lerp } from '../core/utils';
 import {
   EARLY_EASE_BOOST,
@@ -22,7 +21,12 @@ export function arcMinApproach(n: Node, T: Node, dir: number, relAng: number, t0
   const pl = state.G.player;
   const tr = T.r + pl.r;
   const plr = pl.r;
-  const Wp = view.W - pl.r;
+  // Side walls in the active playfield. Normal runs use the live canvas edges;
+  // the Daily Challenge uses the fixed virtual field so the swept flight (and
+  // therefore the gate it lights) is identical on every device. For a normal run
+  // these are exactly [plr, view.W - plr] — unchanged from before.
+  const loW = fieldLeft() + plr;
+  const hiW = fieldRight() - plr;
   const Ty = T.wy;
   // LEAD PREDICTION — a moving target drifts during the ~0.4 s flight, so we
   // evaluate its position at each future timestep (same motion equation the
@@ -52,8 +56,8 @@ export function arcMinApproach(n: Node, T: Node, dir: number, relAng: number, t0
     vy -= G_FALL * h;
     x += vx * h;
     y += vy * h;
-    if (x < plr) { x = plr; vx = Math.abs(vx) * WALL; }
-    if (x > Wp)  { x = Wp;  vx = -Math.abs(vx) * WALL; }
+    if (x < loW) { x = loW; vx = Math.abs(vx) * WALL; }
+    if (x > hiW) { x = hiW; vx = -Math.abs(vx) * WALL; }
 
     // target X at this flight instant (constant for static nodes)
     const Tx = TxAt(s);

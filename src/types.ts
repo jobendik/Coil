@@ -105,6 +105,10 @@ export interface GameState {
   comboFlashColor: string;        // color of the active milestone flash
   firstRunOfDay: boolean;         // 2× coin bonus active for this run
   coinMult: number;               // current coin multiplier (1 or 2)
+  fieldX: number;                 // left edge of the playfield in world/screen px. 0 for normal
+                                  // runs (the field IS the canvas); for the Daily Challenge it's
+                                  // the frozen centring offset of the fixed DAILY_VW-wide virtual
+                                  // field, so the seeded route is width-independent (see state.ts).
   // ---- meta-layer (cosmetic / reward systems on top of the skill loop) ----
   daily: boolean;                 // this run is the seeded Daily Challenge
   zen: boolean;                   // Zen mode: can't die — falling bounces you back up

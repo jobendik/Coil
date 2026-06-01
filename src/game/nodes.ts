@@ -1,6 +1,5 @@
 import type { Node, NodeType, SparkKind } from '../types';
-import { view } from '../core/canvas';
-import { state } from './state';
+import { state, fieldLeft, fieldRight } from './state';
 import { TAU, clamp, lerp } from '../core/utils';
 import { gateWidth } from './physics';
 import { DECAY_FROM_M } from '../config';
@@ -29,7 +28,11 @@ export function setRunSeed(seed: number | null): void {
 
 export function genNode(): void {
   const G = state.G;
-  const { W } = view;
+  // Playfield x-bounds the route is laid out in. Normal runs use the live canvas
+  // [0, view.W]; the Daily Challenge uses a fixed virtual width centred in the
+  // canvas (see fieldLeft/fieldRight) so the seeded layout is width-independent.
+  const fl = fieldLeft();
+  const fr = fieldRight();
   const idx = G.nodes.length;
   const prev = G.nodes[G.nodes.length - 1];
   const hm = G.lastNodeY / 12;
@@ -38,7 +41,7 @@ export function genNode(): void {
   const gap = easy ? rrand(92, 118) : rrand(108, lerp(135, 172, diff));
   let ny = G.lastNodeY + gap;
   const maxOff = Math.min(gap * 0.7, easy ? 44 : lerp(64, 100, diff));
-  let nx = clamp((prev ? prev.wx : W / 2) + rrand(-maxOff, maxOff), 52, W - 52);
+  let nx = clamp((prev ? prev.wx : (fl + fr) / 2) + rrand(-maxOff, maxOff), fl + 52, fr - 52);
   let type: NodeType = 'normal';
   let r = 18;
 
@@ -87,7 +90,7 @@ export function genNode(): void {
   // fair, so we skip the (more expensive) check for them. Uses base positions.
   // For a moving node, keep the full horizontal swing on-screen by clamping the
   // CENTRE (baseX) with the amplitude as margin.
-  if (type === 'move') nx = clamp(nx, 52 + mvAmp, W - 52 - mvAmp);
+  if (type === 'move') nx = clamp(nx, fl + 52 + mvAmp, fr - 52 - mvAmp);
 
   if (prev && !easy) {
     const pbx = prev.type === 'move' ? prev.baseX : prev.wx;
@@ -121,7 +124,7 @@ export function genNode(): void {
       bw = pbx;
       by = prev.wy + 110;
     } // last resort: straight up, modest gap — always fair
-    nx = clamp(bw, 52 + (type === 'move' ? mvAmp : 0), W - 52 - (type === 'move' ? mvAmp : 0));
+    nx = clamp(bw, fl + 52 + (type === 'move' ? mvAmp : 0), fr - 52 - (type === 'move' ? mvAmp : 0));
     ny = by;
     // Reachability GUARANTEE across the predecessor's FULL motion. The fairness loop
     // scores the gate from prev's CENTRE, but a MOVING predecessor slides the launch
@@ -145,7 +148,7 @@ export function genNode(): void {
       return true;
     };
     if (!reachAll(nx, ny)) {
-      const fbx = clamp(pbx, 52 + (type === 'move' ? mvAmp : 0), W - 52 - (type === 'move' ? mvAmp : 0));
+      const fbx = clamp(pbx, fl + 52 + (type === 'move' ? mvAmp : 0), fr - 52 - (type === 'move' ? mvAmp : 0));
       for (let g = 110; g >= 70; g -= 12) {
         nx = fbx;
         ny = prev.wy + g;
@@ -183,7 +186,7 @@ export function genNode(): void {
   // node line so the gate's flight path stays clear. NOT linked into prev.next, so
   // the gate (which targets n.next) never aims at a spike. Gated to hm > 320.
   if (!easy && hm > 320 && rnd() < 0.06 + diff * 0.14) {
-    const sx = clamp(nx + (nx < W / 2 ? rrand(95, 150) : -rrand(95, 150)), 28, W - 28);
+    const sx = clamp(nx + (nx < (fl + fr) / 2 ? rrand(95, 150) : -rrand(95, 150)), fl + 28, fr - 28);
     G.nodes.push({
       wx: sx, wy: ny + rrand(-26, 26), r: 15, type: 'spike', baseX: sx, next: null,
       amp: 0, ph: rrand(0, TAU), spd: 1, pulse: rrand(0, TAU),
@@ -194,7 +197,7 @@ export function genNode(): void {
   const cr = rnd();
   if (cr < 0.5) {
     G.sparks.push({
-      wx: clamp(nx + rrand(-55, 55), 20, W - 20),
+      wx: clamp(nx + rrand(-55, 55), fl + 20, fr - 20),
       wy: ny - gap * 0.5,
       got: false,
       kind: 'spark',
@@ -205,7 +208,7 @@ export function genNode(): void {
     const pu = rnd();
     const kind: SparkKind = (hm > 240 && pu < 0.38) ? 'shield' : pu < 0.7 ? 'focus' : 'magnet';
     G.sparks.push({
-      wx: clamp(nx + rrand(-50, 50), 20, W - 20),
+      wx: clamp(nx + rrand(-50, 50), fl + 20, fr - 20),
       wy: ny - gap * 0.5,
       got: false,
       kind,
