@@ -103,6 +103,8 @@ export interface GameState {
   comboTierReached: number;       // highest COMBO_TIERS index already celebrated
   comboFlash: number;             // 0..1 brief screen-tint pulse on milestones
   comboFlashColor: string;        // color of the active milestone flash
+  coinDisp: number;               // animated coin balance shown in the HUD (rolls up to the real total)
+  coinPunch: number;              // 0..1 scale-punch on the coin counter, decays each frame
   firstRunOfDay: boolean;         // 2× coin bonus active for this run
   coinMult: number;               // current coin multiplier (1 or 2)
   fieldX: number;                 // left edge of the playfield in world/screen px. 0 for normal
@@ -115,6 +117,7 @@ export interface GameState {
   focusT: number;                 // FOCUS slow-motion time remaining (s); 0 = inactive
   magnetT: number;                // MAGNET coin-attraction time remaining (s); 0 = inactive
   overdrive: number;              // 0..1 meter; fills with perfects → triggers FRENZY at full
+  odArmed: boolean;               // anticipation riser already played as the meter neared full (reset when FRENZY fires)
   frenzyT: number;                // FRENZY mode time remaining (s); 0 = inactive
   frenzyMax: number;              // FRENZY duration (s) for the countdown bar
   frenzyBanked: number;           // coins earned during the active FRENZY (for the end-bonus)

@@ -34,10 +34,21 @@ export function angDiff(a: number, b: number): number {
 
 const screenW = window.screen ? window.screen.width : 999;
 const screenH = window.screen ? window.screen.height : 999;
+// Cold-start tier heuristic. The runtime auto-scaler (main.ts) is the real safety
+// net, but it can only react AFTER ~2 s of measured low FPS — so on a budget phone
+// the heaviest 'high' tier runs during the first seconds and janks. Start low-signal
+// devices at 'medium' up front so that cold-start window is already lightened.
+// Signals: few CPU cores, low device memory (Chrome/Android only), or a small
+// low-DPR screen. High-end devices (8 cores / iOS, where deviceMemory is undefined)
+// stay 'high'. The auto-scaler still moves either direction from here.
+const _cores = navigator.hardwareConcurrency || 8;
+const _mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+const _lowEnd =
+  _cores <= 4 ||
+  _mem <= 4 ||
+  ((window.devicePixelRatio || 1) < 1.5 && Math.min(screenW, screenH) <= 380);
 export const fx = {
-  level: ((window.devicePixelRatio || 1) < 1.5 && Math.min(screenW, screenH) <= 380
-    ? 'medium'
-    : 'high') as FxLevel,
+  level: (_lowEnd ? 'medium' : 'high') as FxLevel,
   // Global motion scale (1 = full, 0 = none). Driven by the Reduced Motion
   // setting / prefers-reduced-motion. Honoured by shake(), Flash, and combo
   // vignettes so sensitive players keep the game readable and comfortable.

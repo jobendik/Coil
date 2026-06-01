@@ -85,6 +85,19 @@ export function update(dt: number): void {
   if (pl.land > 0) pl.land = Math.max(0, pl.land - dt);
   if (G.magnetT > 0) G.magnetT -= dt;
   if (G.comboFlash > 0) G.comboFlash = Math.max(0, G.comboFlash - dt * 2.4);
+  // Casino count-up: roll the HUD coin balance up toward the real total and
+  // punch its scale on every step. The short 'tick' sample is internally
+  // throttled, so a big payout machine-guns satisfyingly without droning.
+  const realCoins = Profile.coins + G.coins;
+  if (G.coinDisp < realCoins) {
+    const step = Math.max(1, Math.ceil((realCoins - G.coinDisp) * 0.2));
+    G.coinDisp = Math.min(realCoins, G.coinDisp + step);
+    G.coinPunch = 1;
+    SFX.tick();
+  } else if (G.coinDisp > realCoins) {
+    G.coinDisp = realCoins;        // snap down (shouldn't happen mid-run, but stay honest)
+  }
+  if (G.coinPunch > 0) G.coinPunch = Math.max(0, G.coinPunch - dt * 5);
   if (G.dead) {
     G.deadT += dt;
     pl.vy -= G_FALL * dt;
@@ -604,6 +617,15 @@ export function release(): void {
     G.combo = Math.min(12, G.combo + 1);
     G.maxCombo = Math.max(G.maxCombo, G.combo);
     G.overdrive = clamp(G.overdrive + OVERDRIVE_BASE + G.combo * OVERDRIVE_PER_COMBO, 0, 1);
+    // FRENZY anticipation — once the meter is nearly full, fire a rising cue + buzz
+    // so the reward is FELT building, not sprung. Armed once; cleared when FRENZY
+    // fires. The threshold sits ~1 perfect short of full so the riser leads almost
+    // straight into the payoff (build → pop).
+    if (!G.odArmed && G.overdrive >= 0.82 && G.frenzyT <= 0) {
+      G.odArmed = true;
+      SFX.riser(0.6);
+      buzz(10);
+    }
     const gain = Math.round(3 * G.combo) * G.coinMult * fMul;
     G.coins += gain;
     if (G.frenzyT > 0) G.frenzyBanked += gain;
@@ -613,6 +635,10 @@ export function release(): void {
     buzz(8);
     P.ring(sx, sy, '#fff', 22, 330);
     P.burst(sx, sy, 10, skin().t, 260, 0.5, 4);
+    for (let i = 0; i < 4; i++) {
+      Sparkles.pop(sx + Math.cos(i * Math.PI * 0.5 + G.t) * 18, sy + Math.sin(i * Math.PI * 0.5 + G.t) * 18, i % 2 ? skin().t : '#ffffff');
+    }
+    if (G.combo >= 3 || G.frenzyT > 0) Rays.burst(sx, sy, G.frenzyT > 0 ? '#ffd24a' : '#ffffff', G.frenzyT > 0 ? 10 : 6);
     if (G.firstFlingPending) {
       Pop.add(sx, sy - 18, 'FIRST! PERFECT', '#fff');
     } else {
@@ -658,6 +684,7 @@ export function release(): void {
     // OVERDRIVE full → trigger FRENZY (skill-earned flow state)
     if (G.overdrive >= 1 && G.frenzyT <= 0) {
       G.overdrive = 0;
+      G.odArmed = false;
       G.frenzyT = FRENZY_TIME;
       G.frenzyBanked = 0;
       Callout.add('FRENZY!', '#ffd24a', true);
@@ -665,9 +692,12 @@ export function release(): void {
       bigWinAudio(1.0);
       cymbal(0.5);
       cheerSwell(0.7, 0.18);
-      Confetti.rain(40);
-      Coins.spawn(W / 2, H * 0.5, 20, { fountain: true, up: 160 });
+      Confetti.rain(60);
+      Coins.spawn(W / 2, H * 0.5, 28, { fountain: true, up: 190 });
+      Rays.burst(W / 2, H * 0.5, '#2ff3e0', 18);
+      Rays.burst(W / 2, H * 0.5, '#ff4d8d', 18);
       Shock.ring(W / 2, H * 0.5, '#ffd24a', { r0: 20, r1: Math.max(W, H), lw: 7, life: 0.65, fill: true });
+      Shock.ring(W / 2, H * 0.5, '#2ff3e0', { r0: 44, r1: Math.max(W, H) * 0.7, lw: 4, life: 0.55 });
       Sparkles.scatter(26, '#ffd24a');
       Flash.hit('#ffd24a', 0.45);
       shake(8, 0.4);

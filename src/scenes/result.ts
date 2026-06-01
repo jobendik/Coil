@@ -50,12 +50,14 @@ export const Result = {
   t: 0,
   bars: [] as ResultBar[],
   anim: [] as number[],
+  coinRoll: 0,        // animated count-up of the run's coin payoff (the ◎ bar)
   doubled: false,
   busyAd: false,
 
   show(d: ResultData): void {
     this.d = d;
     this.t = 0;
+    this.coinRoll = 0;
     this.doubled = false;
     this.busyAd = false;
     const lp = Profile.levelProgress();
@@ -277,6 +279,19 @@ export const Result = {
         this.anim[i] = lerp(this.anim[i], this.bars[i].to, Math.min(1, dt * 5));
       }
     }
+    // Count-up the coin payoff in step with its bar revealing — a casino-style
+    // roll with the short 'tick' (internally throttled). Re-targets automatically
+    // if DOUBLE COINS raises d.coins mid-roll.
+    const coinStart = 0.3 + 2 * 0.45;
+    if (this.t > coinStart) {
+      if (this.coinRoll < this.d.coins) {
+        const step = Math.max(1, Math.ceil((this.d.coins - this.coinRoll) * Math.min(1, dt * 4.5)));
+        this.coinRoll = Math.min(this.d.coins, this.coinRoll + step);
+        SFX.tick();
+      } else if (this.coinRoll > this.d.coins) {
+        this.coinRoll = this.d.coins;
+      }
+    }
   },
 
   render(): void {
@@ -307,7 +322,24 @@ export const Result = {
       ctx.fillText(b.label, W * 0.12, by);
       ctx.textAlign = 'right';
       ctx.fillStyle = b.color;
-      ctx.fillText(b.val, W * 0.88, by);
+      // the coin payoff bar (i===2) shows the live count-up; it glows + scales
+      // briefly while the number is still climbing, then settles.
+      if (i === 2) {
+        const rolling = this.coinRoll < d.coins;
+        ctx.save();
+        if (rolling) {
+          ctx.shadowColor = b.color;
+          ctx.shadowBlur = 10;
+          const s = 1.12;
+          ctx.translate(W * 0.88, by);
+          ctx.scale(s, s);
+          ctx.translate(-W * 0.88, -by);
+        }
+        ctx.fillText('◎ +' + Math.round(this.coinRoll), W * 0.88, by);
+        ctx.restore();
+      } else {
+        ctx.fillText(b.val, W * 0.88, by);
+      }
       rr(W * 0.12, by + 12, W * 0.76, 9, 4);
       ctx.fillStyle = 'rgba(255,255,255,.08)';
       ctx.fill();

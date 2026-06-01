@@ -59,6 +59,8 @@ export function resetRun(daily = false, zen = false): void {
     comboTierReached: -1,
     comboFlash: 0,
     comboFlashColor: '#fff',
+    coinDisp: Profile.coins,     // start the HUD counter at the player's banked total
+    coinPunch: 0,
     firstRunOfDay: firstOfDay,
     coinMult: firstOfDay ? 2 : 1,
     // Daily Challenge: simulate in a FIXED virtual width centred in the canvas so
@@ -71,6 +73,7 @@ export function resetRun(daily = false, zen = false): void {
     focusT: 0,
     magnetT: 0,
     overdrive: 0,
+    odArmed: false,
     frenzyT: 0,
     frenzyMax: FRENZY_TIME,
     frenzyBanked: 0,
