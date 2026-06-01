@@ -52,14 +52,19 @@ export const DailyRun = {
     return this.d.attempts > 0;
   },
 
+  /** Highest-threshold medal earned — picked by threshold, not array order, so
+   *  reordering DAILY_MEDALS in config can't surface the wrong/lower medal. */
   topMedal(): DailyMedal | null {
     let m: DailyMedal | null = null;
-    for (const x of DAILY_MEDALS) if (this.d.best >= x.th) m = x;
+    for (const x of DAILY_MEDALS) if (this.d.best >= x.th && (!m || x.th > m.th)) m = x;
     return m;
   },
 
+  /** Lowest-threshold medal not yet reached (the next target). */
   nextMedal(): DailyMedal | null {
-    return DAILY_MEDALS.find((x) => this.d.best < x.th) || null;
+    let m: DailyMedal | null = null;
+    for (const x of DAILY_MEDALS) if (this.d.best < x.th && (!m || x.th < m.th)) m = x;
+    return m;
   },
 
   /** Record a finished daily run, granting any freshly-earned medals (once/day). */

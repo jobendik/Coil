@@ -7,7 +7,7 @@ import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
 import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
 import { renderPlay, setZenExitHandler } from './scenes/play';
-import { renderShop } from './scenes/shop';
+import { renderShop, shopDown, shopMove, shopUp, shopResetScroll } from './scenes/shop';
 import { renderEvo, evoDown, evoMove, evoUp } from './scenes/evo';
 import { ac, loadSamples } from './core/audio';
 import { Music } from './core/music';
@@ -106,6 +106,7 @@ function primaryAction(): void {
   } else if (state.scene === 'home') {
     startPlay(false);
   } else if (state.scene === 'shop') {
+    shopResetScroll();
     state.scene = 'home';
   }
 }
@@ -125,6 +126,12 @@ function onDown(e: PointerEvent): void {
     evoDown(x);
     return;
   }
+  // Shop grid scrolls vertically: defer the hit-test to pointerup so a drag scrolls
+  // and only a tap activates a card/tab/back button.
+  if (state.scene === 'shop') {
+    shopDown(y);
+    return;
+  }
   if (state.scene !== 'play') {
     hitButtons(x, y);
     return;
@@ -136,18 +143,19 @@ function onDown(e: PointerEvent): void {
 }
 
 view.cv.addEventListener('pointerdown', onDown, { passive: false });
-view.cv.addEventListener('pointercancel', () => { inputLock = false; evoUp(); }, { passive: false });
+view.cv.addEventListener('pointercancel', () => { inputLock = false; evoUp(); shopUp(); }, { passive: false });
 view.cv.addEventListener('contextmenu', (e) => e.preventDefault());
 
-// Evolution-panel drag: track horizontal movement, and on release treat a
-// negligible move as a tap (run the button hit-test at the release point).
+// Evolution panel (horizontal) and Shop grid (vertical) both drag-to-scroll: track
+// movement, and on release treat a negligible move as a tap (run the hit-test there).
 view.cv.addEventListener('pointermove', (e) => {
   if (state.scene === 'evo') evoMove(pos(e).x);
+  else if (state.scene === 'shop') shopMove(pos(e).y);
 }, { passive: true });
 view.cv.addEventListener('pointerup', (e) => {
-  if (state.scene !== 'evo') return;
   const { x, y } = pos(e);
-  if (evoUp()) hitButtons(x, y);
+  if (state.scene === 'evo') { if (evoUp()) hitButtons(x, y); }
+  else if (state.scene === 'shop') { if (shopUp()) hitButtons(x, y); }
 }, { passive: false });
 
 // Desktop keyboard (CrazyGames has heavy desktop traffic): Space / Enter / ArrowUp

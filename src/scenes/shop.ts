@@ -24,6 +24,23 @@ type Tab = 'chars' | 'trails' | 'worlds' | 'gear';
 type Item = Skin | Trail | World | Accessory;
 let shopTab: Tab = Store.get<Tab>('coil_shop_tab', 'chars');
 
+// Vertical scroll for the item grid so a catalogue taller than the screen stays
+// fully reachable (the grid used to silently cull anything past the fold, stranding
+// the 7th Worlds/Gear card on short viewports). Direct drag, no inertia; resets to
+// the top on tab change / re-entry. Input hooks are wired from main.ts.
+const shopScroll = { y: 0, max: 0, dragging: false, lastPY: 0, moved: 0 };
+export function shopResetScroll(): void { shopScroll.y = 0; shopScroll.dragging = false; }
+export function shopDown(py: number): void { shopScroll.dragging = true; shopScroll.lastPY = py; shopScroll.moved = 0; }
+export function shopMove(py: number): void {
+  if (!shopScroll.dragging) return;
+  const dy = py - shopScroll.lastPY;
+  shopScroll.lastPY = py;
+  shopScroll.moved += Math.abs(dy);
+  shopScroll.y = clamp(shopScroll.y - dy, 0, shopScroll.max);
+}
+/** True if the gesture was a tap (negligible movement) → caller runs the hit-test. */
+export function shopUp(): boolean { const tap = shopScroll.moved < 8; shopScroll.dragging = false; return tap; }
+
 const TABS: Array<[Tab, string]> = [
   ['chars', 'CHARS'],
   ['trails', 'TRAILS'],
@@ -404,7 +421,7 @@ export function renderShop(): void {
     }
     text(label, sx + segW / 2, trackY + trackH / 2, 10.5,
       active ? '#fff' : '#8a93bf', 800, 0, 'center', "'Unbounded'");
-    btn('tab' + id, sx, trackY, segW, trackH, () => { shopTab = id; Store.set('coil_shop_tab', id); });
+    btn('tab' + id, sx, trackY, segW, trackH, () => { shopTab = id; shopScroll.y = 0; Store.set('coil_shop_tab', id); });
   }
 
   // ---- item grid ----
@@ -418,13 +435,36 @@ export function renderShop(): void {
   const cw = (W - mx * 2 - gap) / cols;
   const ch = 134;
   const gy = 148 + SAFE_TOP;
+  const gridBottom = H - 76 - SAFE_BOTTOM;                 // viewport bottom (above BACK)
+  const rows = Math.ceil(list.length / cols);
+  const contentH = rows > 0 ? (rows - 1) * (ch + gap) + ch : 0;
+  shopScroll.max = Math.max(0, contentH - (gridBottom - gy));
+  shopScroll.y = clamp(shopScroll.y, 0, shopScroll.max);
+
+  // Register BACK *before* the grid so it always wins a tap, even if a scrolled
+  // card straddles its row (hitButtons is first-match). Visuals are drawn after.
+  const bw = W * 0.5;
+  const bh = 46;
+  const bx = W / 2 - bw / 2;
+  const by = H - 64 - SAFE_BOTTOM;
+  btn('back', bx, by, bw, bh, () => { shopScroll.y = 0; state.scene = 'home'; });
+
+  // Clip the grid to its viewport so scrolled cards don't paint over header/footer.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, gy - 6, W, gridBottom - gy + 12);
+  ctx.clip();
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = mx + col * (cw + gap);
-    const y = gy + row * (ch + gap);
-    if (y > H - 78 - SAFE_BOTTOM) continue;
+    const y = gy + row * (ch + gap) - shopScroll.y;
+    if (y > gridBottom || y + ch < gy) continue;          // cull off-viewport (no draw, no button)
+    // Clamp this card's tap region to the visible viewport so a card straddling an
+    // edge can't register a hit-rect over the (button-less) header/footer.
+    const btnY = Math.max(y, gy);
+    const btnH = Math.min(y + ch, gridBottom) - btnY;
     const isOwned = owned.includes(item.id);
     const eq = eqId === item.id;
     const can = Profile.coins >= item.price;
@@ -476,7 +516,7 @@ export function renderShop(): void {
       text('EQUIPPED', pcx, y + 117, 11, acol, 800, 3);
     } else if (isOwned) {
       text('TAP TO EQUIP', pcx, y + 117, 10.5, '#9fb0e0', 700, 0);
-      btn('eq' + shopTab + item.id, x, y, cw, ch, () => equipFor(shopTab, item.id));
+      btn('eq' + shopTab + item.id, x, btnY, cw, btnH, () => equipFor(shopTab, item.id));
     } else if (item.req) {
       // SKILL ROUTE — show the requirement + progress bar. If the item ALSO has a
       // price it's DUAL-ROUTE: reach the req for free, or buy with coins (a small
@@ -507,7 +547,7 @@ export function renderShop(): void {
         ctx.fill();
         ctx.restore();
         text(label, pcx, chipY + 8, 9.5, can2 ? '#ffe39b' : '#7e88b5', 800, 0);
-        if (can2) btn('buy' + shopTab + item.id, x, y, cw, ch, () => buy(shopTab, item));
+        if (can2) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buy(shopTab, item));
       }
     } else {
       // price chip
@@ -531,8 +571,19 @@ export function renderShop(): void {
       ctx.fill();
       ctx.restore();
       text(priceTxt, dotX + 4 + 5, dotY, 11, can ? '#ffe39b' : '#7e88b5', 800, 0, 'left');
-      if (can) btn('buy' + shopTab + item.id, x, y, cw, ch, () => buy(shopTab, item));
+      if (can) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buy(shopTab, item));
     }
+  }
+  ctx.restore();   // end grid clip
+
+  // scroll affordance — a thin track + thumb on the right edge when scrollable
+  if (shopScroll.max > 1) {
+    const viewH = gridBottom - gy;
+    const thumbH = Math.max(28, viewH * (viewH / contentH));
+    const ty2 = gy + (viewH - thumbH) * (shopScroll.y / shopScroll.max);
+    rr(W - 6, ty2, 3, thumbH, 1.5);
+    ctx.fillStyle = hexA(sk.c, 0.5);
+    ctx.fill();
   }
 
   // unlock-moment FX (drawn above the grid)
@@ -541,11 +592,7 @@ export function renderShop(): void {
   Shock.draw();
   Confetti.draw();
 
-  // ---- BACK button (refined outline, not a glowing slab) ----
-  const bw = W * 0.5;
-  const bh = 46;
-  const bx = W / 2 - bw / 2;
-  const by = H - 64 - SAFE_BOTTOM;
+  // ---- BACK button visuals (the hit-region was registered before the grid) ----
   rr(bx, by, bw, bh, 13);
   ctx.fillStyle = 'rgba(20,16,48,.8)';
   ctx.fill();
@@ -553,7 +600,4 @@ export function renderShop(): void {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   text('BACK', W / 2, by + bh / 2, 15, sk.t, 800, 0, 'center', "'Unbounded'");
-  btn('back', bx, by, bw, bh, () => {
-    state.scene = 'home';
-  });
 }

@@ -418,7 +418,7 @@ export function update(dt: number): void {
 function predictDoom(): boolean {
   const G = state.G;
   const pl = G.player;
-  const { W, H } = view;
+  const { W } = view;
   const dt = 1 / 60;
   let x = pl.wx;
   let y = pl.wy;

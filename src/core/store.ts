@@ -39,11 +39,20 @@ function rememberKey(k: string): void {
 
 export const Store = {
   get<T>(k: string, d: T): T {
+    let v: string | null;
     try {
-      const v = localStorage.getItem(k);
-      return v == null ? d : (JSON.parse(v) as T);
+      v = localStorage.getItem(k);
     } catch {
-      return (k in mem) ? (mem[k] as T) : d;
+      return (k in mem) ? (mem[k] as T) : d;     // storage disabled (private mode)
+    }
+    if (v == null) return d;
+    try {
+      return JSON.parse(v) as T;
+    } catch {
+      // Corrupted value — drop it so we self-heal (return the default cleanly now,
+      // and a later set() can write valid data) instead of failing every load.
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
+      return d;
     }
   },
   set<T>(k: string, v: T): void {
@@ -91,13 +100,16 @@ export const Store = {
     if (localHasProfile || !cloudHasProfile) return false;
 
     let copied = 0;
+    let failed = 0;
     for (const k of cloudKeys) {
       try {
         const v = d.getItem(k);
         if (v != null) { localStorage.setItem(k, v); copied++; }
-      } catch { /* ignore */ }
+      } catch { failed++; }
     }
-    try { sessionStorage.setItem('coil_hydrated', '1'); } catch { /* ignore */ }
+    // Only latch "done" on a clean copy, so a transient failure (e.g. quota) can
+    // retry next session rather than permanently giving up on a partial restore.
+    if (failed === 0) { try { sessionStorage.setItem('coil_hydrated', '1'); } catch { /* ignore */ } }
     return copied > 0;
   },
 };
