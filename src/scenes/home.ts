@@ -174,17 +174,22 @@ export function renderHome(dt: number): void {
   ctx.fill();
   const ex = Math.cos(face);
   const ey = Math.sin(face);
+  // idle blink — irregular two-cadence schedule, so the menu creature feels alive
+  const ht = homeT * 0.9;
+  const blink = ((ht % 3.3) < 0.1 || (ht % 5.1) < 0.09) ? 1 : 0;
   for (const o of [-1, 1]) {
     const ox = ey * o * 3;
     const oy = -ex * o * 3;
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(ox + ex * 2, oy + ey * 2, 2.4, 0, TAU);
+    ctx.ellipse(ox + ex * 2, oy + ey * 2, 2.4, 2.4 * (blink ? 0.15 : 1), 0, 0, TAU);
     ctx.fill();
-    ctx.fillStyle = '#0a0720';
-    ctx.beginPath();
-    ctx.arc(ox + ex * 3, oy + ey * 3, 1.2, 0, TAU);
-    ctx.fill();
+    if (!blink) {
+      ctx.fillStyle = '#0a0720';
+      ctx.beginPath();
+      ctx.arc(ox + ex * 3, oy + ey * 3, 1.2, 0, TAU);
+      ctx.fill();
+    }
   }
   ctx.restore();
   // show the equipped accessory on the menu character (same look as in-game)
@@ -192,6 +197,33 @@ export function renderHome(dt: number): void {
 
   text('COIL', cx, cy - 118, 64, '#fff', 800, 26, 'center', "'Unbounded'");
   text('Tap in the glowing gate · climb the void', cx, cy - 76, 13, '#9fb0e0', 600, 0);
+
+  // FIRST SESSION: a brand-new player (no runs yet) sees ONLY the core loop —
+  // logo, the orbiting creature, and one pulsing PLAY. Missions, vault, streak,
+  // wheel/chest, level and the secondary modes are hidden until after run 1, so
+  // nothing competes with "PLAY" (CrazyGames onboarding: reveal only the core
+  // loop in session 1). The full home returns automatically on the next visit.
+  if (Profile.runsPlayed < 1) {
+    const pw = W * 0.62;
+    const ph = 64;
+    const pxx = W / 2 - pw / 2;
+    const pyy = H * 0.6 - view.SAFE_BOTTOM;
+    const pulse = 1 + Math.sin(homeT * 3) * 0.03;
+    ctx.save();
+    ctx.translate(W / 2, pyy + ph / 2);
+    ctx.scale(pulse, pulse);
+    ctx.translate(-W / 2, -(pyy + ph / 2));
+    rr(pxx, pyy, pw, ph, 16);
+    ctx.fillStyle = sk.c;
+    ctx.shadowColor = sk.c;
+    ctx.shadowBlur = 26;
+    ctx.fill();
+    ctx.restore();
+    text('PLAY', W / 2, pyy + ph / 2, 24, '#04030a', 800, 0, 'center', "'Unbounded'");
+    btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
+    drawTopToggles();
+    return;
+  }
 
   // STAR VAULT ticker — a slow long-term carrot (won by a bonus catch at high combo)
   {

@@ -15,9 +15,10 @@ import { CG } from './core/cg';
 import { fxUpd } from './core/fx';
 import { hitButtons, resetButtons } from './core/ui';
 import { fx } from './core/utils';
-import { rand, text } from './core/utils';
+import { clamp, rand, text } from './core/utils';
 import { Telemetry } from './core/telemetry';
 import { claimEarnedUnlocks } from './game/unlocks';
+import { Profile } from './game/profile';
 import { DEBUG, DOOM_TIMESCALE } from './config';
 
 Telemetry.session();
@@ -38,6 +39,7 @@ function startPlay(daily = false, zen = false): void {
   resetRun(daily, zen);
   maybeShowStartToast();
   Telemetry.runStart(daily);
+  Profile.noteRun();          // reveals the full home meta after the first run
   state.scene = 'play';
   CG.gameplayStart();
 }
@@ -214,11 +216,16 @@ function frame(now: number): void {
   P.upd(dt);
   Pop.upd(dt);
   fxUpd(dt);
-  // Zen bed swaps in during calm mode; everything settles outside of play.
+  // Zen bed swaps in during calm mode; everything settles outside of play. The
+  // intensity layer rises with the combo and pins to full during FRENZY, so the
+  // single music track gains variation right when the player is performing well.
   if (state.scene === 'play' && state.G) {
-    Music.setZen(state.G.zen);
+    const g = state.G;
+    Music.setZen(g.zen);
+    Music.setIntensity((g.zen || g.dead) ? 0 : g.frenzyT > 0 ? 1 : clamp((g.combo - 3) / 9, 0, 0.7));
   } else {
     Music.setZen(false);
+    Music.setIntensity(0);
   }
   Music.upd(dt);
   updateShake(dt);

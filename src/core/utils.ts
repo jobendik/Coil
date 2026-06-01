@@ -15,6 +15,16 @@ export function hexA(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 }
 
+/** Blend two "#rrggbb" colours; t=0 → a, t=1 → b. Returns an "rgb(...)" string. */
+export function mixHex(a: string, b: string, t: number): string {
+  const pa = parseInt(a.replace('#', ''), 16);
+  const pb = parseInt(b.replace('#', ''), 16);
+  const r = Math.round(((pa >> 16) & 255) + (((pb >> 16) & 255) - ((pa >> 16) & 255)) * t);
+  const g = Math.round(((pa >> 8) & 255) + (((pb >> 8) & 255) - ((pa >> 8) & 255)) * t);
+  const bl = Math.round((pa & 255) + ((pb & 255) - (pa & 255)) * t);
+  return `rgb(${r},${g},${bl})`;
+}
+
 export function angDiff(a: number, b: number): number {
   let d = (a - b) % TAU;
   if (d > Math.PI) d -= TAU;

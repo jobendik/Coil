@@ -24,6 +24,7 @@ let el: HTMLAudioElement | null = null;
 let started = false;
 let vol = 0;
 let zen = false;
+let intensity = 0;          // 0..1 combo/FRENZY energy, set by the loop each frame
 
 function ensure(): void {
   if (el) return;
@@ -111,6 +112,85 @@ const Zen = {
     this.vol += (target - this.vol) * Math.min(1, dt * 1.2);
     try { this.nodes.master.gain.value = clamp(this.vol, 0, 1); } catch { /* ignore */ }
   },
+
+  /** Immediately mute (ad / tab-hide) — per-frame fade can't run while paused. */
+  silence(): void {
+    this.vol = 0;
+    try { if (this.nodes) this.nodes.master.gain.value = 0; } catch { /* ignore */ }
+  },
+};
+
+/* ---------- procedural INTENSITY layer (anti-fatigue) ----------
+   One 4 MB track loops the whole session, so audio goes stale right around the
+   10-minute playtime window CrazyGames measures. Rather than a second asset (or
+   the playbackRate/volume hacks deliberately removed in 33a19d8), we LAYER a tiny
+   WebAudio "energy" bed on top: bright band-passed noise with a tremolo whose gain
+   + pulse rate rise with combo/FRENZY. It's purely textural (no pitched content),
+   so it can never clash with the track's key — it just makes the bed feel like it
+   lifts when you're doing well, and settles when you're not. Driven by
+   Music.setIntensity() from the loop; silent in menus and Zen. */
+const Intensity = {
+  nodes: null as null | {
+    master: GainNode;
+    src: AudioBufferSourceNode;
+    trem: OscillatorNode;
+  },
+  vol: 0,
+
+  ensure(): void {
+    if (this.nodes) return;
+    const a = ac();
+    if (!a) return;
+    try {
+      const master = a.createGain();
+      master.gain.value = 0;
+      master.connect(a.destination);
+
+      // looping white noise → bandpass (bright "air") → tremolo gain → master
+      const len = Math.floor(a.sampleRate * 2);
+      const buf = a.createBuffer(1, len, a.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      const src = a.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const bp = a.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 3200;
+      bp.Q.value = 0.8;
+      const tremGain = a.createGain();
+      tremGain.gain.value = 0.55;
+      const trem = a.createOscillator();
+      trem.type = 'sine';
+      trem.frequency.value = 5;
+      const tremDepth = a.createGain();
+      tremDepth.gain.value = 0.4;
+      trem.connect(tremDepth);
+      tremDepth.connect(tremGain.gain);
+      src.connect(bp); bp.connect(tremGain); tremGain.connect(master);
+      src.start();
+      trem.start();
+      this.nodes = { master, src, trem };
+    } catch {
+      this.nodes = null;
+    }
+  },
+
+  upd(dt: number, level: number): void {
+    if (level > 0.001) this.ensure();
+    if (!this.nodes) { this.vol = 0; return; }
+    const target = level * 0.1;               // a subtle topping that stays under the track
+    this.vol += (target - this.vol) * Math.min(1, dt * 2.2);
+    try {
+      this.nodes.master.gain.value = clamp(this.vol, 0, 1);
+      this.nodes.trem.frequency.value = 4 + level * 5;   // pulses faster as it builds
+    } catch { /* ignore */ }
+  },
+
+  silence(): void {
+    this.vol = 0;
+    try { if (this.nodes) this.nodes.master.gain.value = 0; } catch { /* ignore */ }
+  },
 };
 
 export const Music = {
@@ -120,9 +200,13 @@ export const Music = {
     ensure();
   },
 
-  /** Hard-pause immediately — used when an ad starts or the tab is hidden. */
+  /** Hard-pause immediately — used when an ad starts or the tab is hidden. The
+   *  per-frame fade can't run while the loop is paused, so the WebAudio layers
+   *  are silenced directly here (otherwise the shimmer would bleed under an ad). */
   pause(): void {
     if (el && !el.paused) el.pause();
+    Intensity.silence();
+    Zen.silence();
   },
 
   /** Toggle the Zen ambient bed (replaces the catchy track in the calm mode). */
@@ -130,11 +214,18 @@ export const Music = {
     zen = on;
   },
 
+  /** Set the combo/FRENZY energy that drives the procedural intensity layer (0..1). */
+  setIntensity(x: number): void {
+    intensity = clamp(x, 0, 1);
+  },
+
   /** Per-frame fade + play/pause sync against the mute setting + tab visibility. */
   upd(dt: number): void {
     const allow = !settings.musicMuted && !document.hidden;
     // Zen ambient (only while in the Zen bed and music is allowed).
     Zen.upd(dt, allow && zen);
+    // Intensity layer — only in real (non-Zen) gameplay; fades to 0 elsewhere.
+    Intensity.upd(dt, allow && !zen ? intensity : 0);
 
     if (!started || !el) return;
     // The catchy track plays unless muted, hidden, or we're in the Zen bed.

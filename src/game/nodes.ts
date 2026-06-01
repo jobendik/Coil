@@ -3,6 +3,7 @@ import { view } from '../core/canvas';
 import { state } from './state';
 import { TAU, clamp, lerp } from '../core/utils';
 import { gateWidth } from './physics';
+import { DECAY_FROM_M } from '../config';
 
 /* Run RNG — defaults to Math.random; the Daily Challenge swaps in a seeded
    generator so every player's route (gaps, offsets, node types, spikes,
@@ -66,6 +67,13 @@ export function genNode(): void {
   if (!easy && type === 'normal' && hm > 150 && rnd() < 0.05) {
     type = 'bonus';
     r = 19;
+  }
+  // DECAY gate — a new mid-game beat introduced past the GLITCH STORM. Full radius
+  // (18) so the gate to it and from it is computed exactly like a normal node; the
+  // collapse is a POST-CATCH timer (see update.latch/update), so the honest-gate
+  // invariant is untouched (re-proven with decay gates in the gate-honesty test).
+  if (!easy && type === 'normal' && hm > DECAY_FROM_M && rnd() < 0.10 + diff * 0.07) {
+    type = 'decay';
   }
 
   // FAIRNESS: the player orbits prev and flings to this node. Guarantee the gate from prev

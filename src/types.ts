@@ -1,6 +1,6 @@
 export type Scene = 'home' | 'play' | 'over' | 'shop' | 'evo';
 
-export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike';
+export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike' | 'decay';
 
 export interface Node {
   wx: number;
@@ -39,6 +39,7 @@ export interface Player {
   trail: Array<{ x: number; y: number }>;
   face: number;
   zap: number;
+  land: number;       // landing-squash timer (s), set on every catch, eases to 0
   lastReleased: Node | null;
   lastReleasedT: number;
 }
@@ -119,6 +120,7 @@ export interface GameState {
   bestNearShown: boolean;         // honest "so close to your best" toast (once per run)
   doomed: boolean;                // lookahead proved this fling can't catch — fast-forward to death
   _doomTick?: number;             // throttle counter for the doom lookahead
+  decayT: number;                 // DECAY-node collapse countdown (s) while orbiting one; 0 = not on a decay gate
   // ---- constellation chains (signature in-run skill objective) ----
   constelActive: number;          // group id of the chain currently in progress (-1 = none)
   constelProg: number;            // perfects landed in the active chain so far (0..3)

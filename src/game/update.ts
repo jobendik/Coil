@@ -25,9 +25,11 @@ import {
   CATCH_PAD,
   COMBO_TIERS,
   DEATH_ANIM,
+  DECAY_TIME,
   FRENZY_COIN_MULT,
   FRENZY_TIME,
   G_FALL,
+  LAND_SQUASH,
   LAUNCH,
   MILE_REWARD,
   MILESTONES,
@@ -79,6 +81,7 @@ export function update(dt: number): void {
 
   if (G.invuln > 0) G.invuln -= dt;
   if (pl.zap > 0) pl.zap -= dt;
+  if (pl.land > 0) pl.land = Math.max(0, pl.land - dt);
   if (G.magnetT > 0) G.magnetT -= dt;
   if (G.comboFlash > 0) G.comboFlash = Math.max(0, G.comboFlash - dt * 2.4);
   if (G.dead) {
@@ -119,6 +122,20 @@ export function update(dt: number): void {
       if (G._sweetTick >= 2) {
         G._sweetTick = 0;
         computeSweetZone();
+      }
+    }
+    // DECAY gate: the gate you're orbiting is collapsing — fling off before the
+    // fuse runs out or it shatters (a fall: shield + the once-per-run rescue still
+    // save you). A single sharper cue fires near the end; the depleting ring +
+    // fracturing in drawNode carry the moment-to-moment urgency.
+    if (G.decayT > 0) {
+      const before = G.decayT;
+      G.decayT -= dt;
+      if (before > 0.45 && G.decayT <= 0.45) SFX.fling();
+      if (G.decayT <= 0) {
+        G.decayT = 0;
+        hit('collapse');
+        return;
       }
     }
   } else {
@@ -425,8 +442,12 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
   const pl = G.player;
   const { W, H } = view;
   pl.latched = true;
+  pl.land = LAND_SQUASH;     // squash-on-catch (the creature "lands" with weight)
   G.doomed = false;     // caught a gate — no longer falling to our doom
   pl.node = n;
+  // DECAY gate arms a collapse countdown — but never in Zen (the calm mode stays
+  // pressure-free), where it simply behaves like a normal gate.
+  G.decayT = (!G.zen && n.type === 'decay') ? DECAY_TIME : 0;
   pl.ang = Math.atan2(dy, dx);
   const cross = pl.vx * Math.sin(pl.ang) - pl.vy * Math.cos(pl.ang);
   pl.dir = cross >= 0 ? 1 : -1;
@@ -476,6 +497,7 @@ export function latch(n: Node, _d: number, dx: number, dy: number): void {
     n.type = 'normal';
     n.r = 18;
   }
+  if (G.decayT > 0) P.ring(n.wx, sY(n.wy), '#ff7a4d', 22, 320);   // "this gate is unstable" tell
   G.target = n.next;
   computeSweetZone();
   advanceConstellation(n);
@@ -554,6 +576,7 @@ export function release(): void {
   pl.vx = tx * LAUNCH;
   pl.vy = ty * LAUNCH;
   pl.latched = false;
+  G.decayT = 0;            // flung clear of the (possibly collapsing) gate
   pl.lastReleased = pl.node;
   pl.lastReleasedT = 0;
   // PERFECT is pure reward: did we fling inside the bright gate?
@@ -663,9 +686,10 @@ export function release(): void {
   G.firstFlingPending = false;
 }
 
-export function hit(cause: 'void' | 'fall' | 'spike'): void {
+export function hit(cause: 'void' | 'fall' | 'spike' | 'collapse'): void {
   const G = state.G;
   const pl = G.player;
+  G.decayT = 0;     // any hit ends the current orbit, so the collapse fuse is moot
   // ZEN: nothing is lethal — a brief grace window and the run continues.
   if (G.zen) { G.invuln = 0.4; return; }
   // Shield now saves EVERY cause (including a fall off the bottom) — one hit,
@@ -726,7 +750,8 @@ export function hit(cause: 'void' | 'fall' | 'spike'): void {
   G.dead = true;
   G.deadT = 0;
   pl.latched = false;
-  Telemetry.death(cause, G.height);
+  // 'collapse' (an unstable gate shattering under you) is a fall for telemetry.
+  Telemetry.death(cause === 'collapse' ? 'fall' : cause, G.height);
   SFX.death();
   buzz(30);
   shake(11, 0.5);

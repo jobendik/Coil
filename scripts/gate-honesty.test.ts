@@ -83,6 +83,7 @@ function run(): void {
   let pairsChecked = 0;
   let litAnglesChecked = 0;
   let movingPairs = 0;
+  let decayPairs = 0;
 
   for (let seed = 0; seed < SEEDS; seed++) {
     // Use the seeded daily route generator deterministically via resetRun(true)
@@ -99,6 +100,10 @@ function run(): void {
       if (!T) continue;
       pairsChecked++;
       if (T.type === 'move') movingPairs++;
+      // DECAY gates must obey the SAME honesty contract: as a target they're
+      // full-radius (decay only starts once caught), and as a pivot a node's
+      // radius/decay never enters arcMinApproach — so they should pass unchanged.
+      if (n.type === 'decay' || T.type === 'decay') decayPairs++;
 
       // Simulate the player latched on n; compute the real gate the game would show.
       const pl = G.player;
@@ -161,7 +166,7 @@ function run(): void {
     }
   }
 
-  console.log(`gate-honesty: ${pairsChecked} node pairs (${movingPairs} moving), `
+  console.log(`gate-honesty: ${pairsChecked} node pairs (${movingPairs} moving, ${decayPairs} decay), `
     + `${litAnglesChecked} lit angles checked across ${SEEDS} seeds`);
   if (failures === 0) {
     console.log('  ✓ 0 dishonest gates — every lit band catches, every perfect lands');
