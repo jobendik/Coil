@@ -11,6 +11,34 @@
 
 ---
 
+## Progress update — branch `claude/elegant-brown-r5Hmy` (2026-06-01)
+
+Shipped (code-only; verified `tsc` clean, all tests green incl. gate-honesty with
+decay gates, `dist-cg` ~41 KB gz JS, source map dropped):
+
+- **1.1 Sampled-SFX layer — DONE (infra).** Drop-in path in `audio.ts`: lazy-loads
+  files from `src/assets/sfx/` (by filename) after first gesture, procedural
+  fallback per event. *Awaiting the actual audio files* (see that folder's README).
+- **1.2 Music anti-fatigue — DONE.** Procedural intensity layer (combo/FRENZY) +
+  multi-track rotation: extra files in `src/assets/music/` auto-join, crossfaded per
+  run. *More tracks optional* (README has specs + the download budget).
+- **1.3 Expressive creature — DONE.** Blink, fear-near-void, joy-on-FRENZY, landing squash.
+- **1.4 New depth beat — DONE.** Decay (unstable) gate; honest-gate invariant re-proven.
+- **1.5 Void tension — DONE.** Late-game squeeze strengthened; `FRENZY_VOID_EASE`
+  was dead config — now actually applied.
+- **2.1 First-session home — DONE.** Minimal home (logo + creature + PLAY) until run 1.
+- **3.2 / 3.3 — DONE.** Lifetime constellation count surfaced on home; menu creature blinks.
+- **5.5 Source-map hygiene — DONE.** Production build no longer emits the `.map`.
+- **5.1 Test runner — CORRECTION:** it is **not** broken. `npm test` passes after
+  `npm install` (esbuild is a devDependency); CI runs `npm ci` first. The honest-gate
+  property is testable in CI today (0 violations across ~890k lit angles, incl. decay).
+
+Still open (asset/external, can't be done in-repo): **Tier 0** thumbnail / preview /
+screenshots / on-platform QA. Lower-priority code items remain (6.3 colour-blind
+palette, 6.5 animated shop previews, 4.x long-tail) — see their tiers below.
+
+---
+
 ## How to read this document
 
 Each item is tagged:

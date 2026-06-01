@@ -28,6 +28,7 @@ import {
   DECAY_TIME,
   FRENZY_COIN_MULT,
   FRENZY_TIME,
+  FRENZY_VOID_EASE,
   G_FALL,
   LAND_SQUASH,
   LAUNCH,
@@ -273,8 +274,14 @@ export function update(dt: number): void {
     // play stays ahead indefinitely; hesitating on the orbit or missing a node is what the void
     // punishes. The lead shrinks over time to keep raising the pressure. (Was a quadratic timer
     // that capped every player — even flawless ones — at the same height.)
-    const lead = lerp(H * 1.45, H * 0.9, clamp(G.t / 110, 0, 1));
-    G.voidY += (26 + clamp(G.t, 0, 110) * 0.40 + Math.max(0, G.t - 110) * 0.05) * dt;
+    // The lead tightens with time, and the late game genuinely squeezes: after
+    // 110 s the rise accelerates ~3× harder so a stalled climb gets caught fast.
+    const lead = lerp(H * 1.45, H * 0.86, clamp(G.t / 110, 0, 1));
+    let rise = 26 + clamp(G.t, 0, 110) * 0.42 + Math.max(0, G.t - 110) * 0.16;
+    // FRENZY flow-protection: the void eases off during the streak so a hot run
+    // isn't cut short. (Config const was previously defined but never applied.)
+    if (G.frenzyT > 0) rise *= FRENZY_VOID_EASE;
+    G.voidY += rise * dt;
     G.voidY = Math.max(G.voidY, G.maxY - lead);
     if (G.invuln <= 0 && pl.wy <= G.voidY + pl.r) {
       hit('void');

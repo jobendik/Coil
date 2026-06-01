@@ -9,7 +9,7 @@ import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './sc
 import { renderPlay, setZenExitHandler } from './scenes/play';
 import { renderShop } from './scenes/shop';
 import { renderEvo, evoDown, evoMove, evoUp } from './scenes/evo';
-import { ac } from './core/audio';
+import { ac, loadSamples } from './core/audio';
 import { Music } from './core/music';
 import { CG } from './core/cg';
 import { fxUpd } from './core/fx';
@@ -40,6 +40,7 @@ function startPlay(daily = false, zen = false): void {
   maybeShowStartToast();
   Telemetry.runStart(daily);
   Profile.noteRun();          // reveals the full home meta after the first run
+  Music.cycle();              // crossfade to a fresh track each run (anti-fatigue; no-op w/ 1 track)
   state.scene = 'play';
   CG.gameplayStart();
 }
@@ -112,6 +113,7 @@ function primaryAction(): void {
 function onDown(e: PointerEvent): void {
   ac();
   Music.start();
+  loadSamples();
   e.preventDefault();
   if (inputLock) return;
   inputLock = true;
@@ -154,6 +156,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     ac();
     Music.start();
+    loadSamples();
     if (inputLock) return;
     inputLock = true;
     setTimeout(() => { inputLock = false; }, 40);

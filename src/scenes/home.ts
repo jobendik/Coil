@@ -246,7 +246,11 @@ export function renderHome(dt: number): void {
 
   const lp = Profile.levelProgress();
   text('BEST  ' + Profile.best + ' m', cx, H * 0.485, 22, sk.t, 700, 8);
-  text(Profile.title() + '  ·  Level ' + lp.l, cx, H * 0.485 + 20, 12, '#9fb0e0', 600, 0);
+  // Lifetime constellations sit alongside title/level so the chains read as a
+  // persistent collectible system, not a one-off in-run event.
+  const subline = Profile.title() + '  ·  Level ' + lp.l
+    + (Profile.constellations > 0 ? '  ·  ✦ ' + Profile.constellations : '');
+  text(subline, cx, H * 0.485 + 20, 12, '#9fb0e0', 600, 0);
 
   // Streak + first-run-of-day badges — the single biggest return-day driver.
   // We center one or two pills horizontally so neither falls into the mission

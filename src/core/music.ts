@@ -3,11 +3,19 @@ import { settings } from '../settings';
 import { ac } from './audio';
 import { clamp } from './utils';
 
-/* Looping background-music bed. Streamed via an HTMLAudioElement (kept separate
+/* Looping background-music bed. Streamed via HTMLAudioElement(s) (kept separate
    from the WebAudio SFX path). Gated by its OWN `musicMuted` setting — fully
    independent of the SFX mute — plus tab visibility, and hard-paused during ads
    via Music.pause() from the loop's pause hook. Volume fades in/out so toggles
    and ad breaks aren't jarring.
+
+   MULTI-TRACK — anti-fatigue. The single bundled track is track 0. Any extra
+   files dropped into src/assets/music/ (*.mp3) join the rotation automatically;
+   Music.cycle() (called at run start) crossfades to a different track so a long
+   session doesn't loop one tune for 10 minutes (the playtime window CrazyGames
+   measures). Tracks load lazily — an element is only created the first time its
+   track is selected — and are cached + reused, so build/first-paint cost is the
+   same as today until the player actually adds tracks.
 
    ZEN bed — in the calm mode the catchy track steps aside for a procedural
    ambient pad (soft ocean/wind + a low drone), synthesised with WebAudio so
@@ -20,22 +28,48 @@ import { clamp } from './utils';
 const BASE_VOL = 0.3;       // unobtrusive under the SFX
 const FADE = 1.8;           // volume units per second
 
-let el: HTMLAudioElement | null = null;
+// Extra tracks: dropped into src/assets/music/. import.meta.glob is a Vite
+// transform; the try/catch keeps the headless test bundler (esbuild) happy, where
+// the call is undefined → no extra tracks → procedural/default path only.
+let extraMusic: Record<string, string> = {};
+try {
+  extraMusic = import.meta.glob('../assets/music/*.{mp3,ogg}', {
+    eager: true, query: '?url', import: 'default',
+  }) as Record<string, string>;
+} catch { /* non-Vite bundler */ }
+const TRACKS: string[] = [musicUrl, ...Object.keys(extraMusic).sort().map((k) => extraMusic[k])];
+
 let started = false;
-let vol = 0;
 let zen = false;
 let intensity = 0;          // 0..1 combo/FRENZY energy, set by the loop each frame
 
-function ensure(): void {
-  if (el) return;
+// Lazily-created, cached <audio> elements keyed by track index. cur = the track
+// fading toward target volume; prev = the outgoing track during a crossfade.
+const elCache: Record<number, HTMLAudioElement> = {};
+let curIdx = -1;
+let prevIdx = -1;
+let curVol = 0;
+let prevVol = 0;
+
+function trackEl(i: number): HTMLAudioElement | null {
+  if (elCache[i]) return elCache[i];
   try {
-    el = new Audio(musicUrl);
-    el.loop = true;
-    el.preload = 'auto';
-    el.volume = 0;
+    const e = new Audio(TRACKS[i]);
+    e.loop = true;
+    e.preload = 'auto';
+    e.volume = 0;
+    elCache[i] = e;
+    return e;
   } catch {
-    el = null;
+    return null;
   }
+}
+
+function pickNext(): number {
+  if (TRACKS.length <= 1) return 0;
+  let i = curIdx;
+  while (i === curIdx) i = Math.floor(Math.random() * TRACKS.length);
+  return i;
 }
 
 /* ---------- procedural Zen ambient (WebAudio) ---------- */
@@ -194,17 +228,33 @@ const Intensity = {
 };
 
 export const Music = {
-  /** Begin the bed on the first user gesture (satisfies autoplay policy). */
+  /** Begin the bed on the first user gesture (satisfies autoplay policy). Picks
+   *  one starting track and creates ONLY that element, so we never fetch a track
+   *  we won't play (the default is 4 MB — don't load it just to cycle away). */
   start(): void {
     started = true;
-    ensure();
+    if (curIdx < 0) curIdx = TRACKS.length > 1 ? Math.floor(Math.random() * TRACKS.length) : 0;
+    trackEl(curIdx);
+  },
+
+  /** Crossfade to a different track. Called at run start so a long session gets
+   *  variety. No-op with a single track, and on the very first run (the track
+   *  start() chose hasn't faded in yet — keep it rather than load a second). */
+  cycle(): void {
+    if (!started || TRACKS.length < 2) return;
+    if (curVol < 0.01 && prevIdx < 0) return;     // first run: don't swap off the fresh pick
+    prevIdx = curIdx;
+    prevVol = curVol;
+    curIdx = pickNext();
+    curVol = 0;
+    trackEl(curIdx);
   },
 
   /** Hard-pause immediately — used when an ad starts or the tab is hidden. The
    *  per-frame fade can't run while the loop is paused, so the WebAudio layers
    *  are silenced directly here (otherwise the shimmer would bleed under an ad). */
   pause(): void {
-    if (el && !el.paused) el.pause();
+    for (const k in elCache) { const e = elCache[k]; if (e && !e.paused) e.pause(); }
     Intensity.silence();
     Zen.silence();
   },
@@ -227,17 +277,32 @@ export const Music = {
     // Intensity layer — only in real (non-Zen) gameplay; fades to 0 elsewhere.
     Intensity.upd(dt, allow && !zen ? intensity : 0);
 
-    if (!started || !el) return;
-    // The catchy track plays unless muted, hidden, or we're in the Zen bed.
+    if (!started) return;
     const want = allow && !zen;
-    const target = want ? BASE_VOL : 0;
-    vol += (target - vol) * Math.min(1, dt * FADE);
-    vol = clamp(vol, 0, 1);
-    el.volume = vol;
-    if (want) {
-      if (el.paused) void el.play().catch(() => { /* gesture still pending */ });
-    } else if (!el.paused && vol < 0.01) {
-      el.pause();
+
+    // Outgoing track during a crossfade — fade to silence, then release.
+    if (prevIdx >= 0) {
+      const pe = elCache[prevIdx];
+      prevVol += (0 - prevVol) * Math.min(1, dt * FADE);
+      if (pe) {
+        pe.volume = clamp(prevVol, 0, 1);
+        if (prevVol < 0.01 && !pe.paused) pe.pause();
+      }
+      if (prevVol < 0.005) prevIdx = -1;
+    }
+
+    // Current track — plays unless muted, hidden, or we're in the Zen bed.
+    const ce = curIdx >= 0 ? elCache[curIdx] : null;
+    if (ce) {
+      const target = want ? BASE_VOL : 0;
+      curVol += (target - curVol) * Math.min(1, dt * FADE);
+      curVol = clamp(curVol, 0, 1);
+      ce.volume = curVol;
+      if (want) {
+        if (ce.paused) void ce.play().catch(() => { /* gesture still pending */ });
+      } else if (!ce.paused && curVol < 0.01) {
+        ce.pause();
+      }
     }
   },
 };
