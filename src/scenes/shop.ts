@@ -24,6 +24,23 @@ type Tab = 'chars' | 'trails' | 'worlds' | 'gear';
 type Item = Skin | Trail | World | Accessory;
 let shopTab: Tab = Store.get<Tab>('coil_shop_tab', 'chars');
 
+// Vertical scroll for the item grid so a catalogue taller than the screen stays
+// fully reachable (the grid used to silently cull anything past the fold, stranding
+// the 7th Worlds/Gear card on short viewports). Direct drag, no inertia; resets to
+// the top on tab change / re-entry. Input hooks are wired from main.ts.
+const shopScroll = { y: 0, max: 0, dragging: false, lastPY: 0, moved: 0 };
+export function shopResetScroll(): void { shopScroll.y = 0; shopScroll.dragging = false; }
+export function shopDown(py: number): void { shopScroll.dragging = true; shopScroll.lastPY = py; shopScroll.moved = 0; }
+export function shopMove(py: number): void {
+  if (!shopScroll.dragging) return;
+  const dy = py - shopScroll.lastPY;
+  shopScroll.lastPY = py;
+  shopScroll.moved += Math.abs(dy);
+  shopScroll.y = clamp(shopScroll.y - dy, 0, shopScroll.max);
+}
+/** True if the gesture was a tap (negligible movement) → caller runs the hit-test. */
+export function shopUp(): boolean { const tap = shopScroll.moved < 8; shopScroll.dragging = false; return tap; }
+
 const TABS: Array<[Tab, string]> = [
   ['chars', 'CHARS'],
   ['trails', 'TRAILS'],
@@ -66,7 +83,12 @@ function accent(tab: Tab, item: Item): string {
 }
 
 function buy(tab: Tab, item: Item): void {
-  if (item.req) return;   // skill-gated items are earned, never bought
+  // Pure-skill items (a `req` and NO price) are earned only — never buyable.
+  // Items with BOTH a req and a price>0 are dual-route: reach the req for free,
+  // OR buy with coins as the fallback (config calls the price exactly that). This
+  // keeps skill-plateaued players progressing instead of hitting a dead zone once
+  // the height-gated track outruns them (see scripts/pacing-audit.test.ts §4.1).
+  if (item.req && item.price <= 0) return;
   if (Profile.coins < item.price) return;
   Profile.coins -= item.price;
   Store.set('coil_coins', Profile.coins);
@@ -151,11 +173,14 @@ function drawTrailPreview(x: number, y: number, w: number, item: Trail): void {
   const { ctx } = view;
   const c = item.c || skin().c;
   const t = item.t || skin().t;
+  // Shop is re-rendered every frame; performance.now() gives the previews life
+  // without needing a run's G.t (stubbed to 0 in tests → static there).
+  const tm = performance.now() / 1000;
   ctx.save();
   ctx.lineCap = 'round';
   if (item.style === 'rainbow') {
     for (let i = 0; i < 7; i++) {
-      ctx.strokeStyle = `hsl(${i * 45},90%,65%)`;
+      ctx.strokeStyle = `hsl(${(i * 45 + tm * 80) % 360},90%,65%)`;   // hue cycles
       ctx.globalAlpha = 0.8;
       ctx.lineWidth = 5 - i * 0.35;
       ctx.beginPath();
@@ -168,7 +193,7 @@ function drawTrailPreview(x: number, y: number, w: number, item: Trail): void {
     ctx.fillStyle = c; ctx.strokeStyle = t; ctx.shadowColor = c; ctx.shadowBlur = glowFX(8); ctx.lineWidth = 1.4;
     for (let i = 0; i < 8; i++) {
       const px = x - w / 2 + (i * w) / 7;
-      const py = y + Math.sin(i * 0.9) * 8;
+      const py = y + Math.sin(i * 0.9 + tm * 2.2) * 8;                // undulating flow
       ctx.globalAlpha = 0.35 + i * 0.08;
       ctx.beginPath();
       ctx.arc(px, py, bubbles ? 5 : 3 + i * 0.2, 0, TAU);
@@ -179,13 +204,14 @@ function drawTrailPreview(x: number, y: number, w: number, item: Trail): void {
     ctx.fillStyle = t; ctx.shadowColor = t; ctx.shadowBlur = glowFX(10);
     for (let i = 0; i < 7; i++) {
       const px = x - w / 2 + (i * w) / 6;
-      const py = y + Math.sin(i) * 7;
-      ctx.save(); ctx.translate(px, py); ctx.rotate(i);
+      const py = y + Math.sin(i + tm * 2) * 7;
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(tm * 4 + i);             // twinkle
+      ctx.save(); ctx.translate(px, py); ctx.rotate(i + tm * 2);
       ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(2, 0); ctx.lineTo(0, 6); ctx.lineTo(-2, 0); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
   } else {
-    ctx.strokeStyle = c; ctx.shadowColor = c; ctx.shadowBlur = glowFX(10);
+    ctx.strokeStyle = c; ctx.shadowColor = c; ctx.shadowBlur = glowFX(10 + Math.sin(tm * 3) * 4);
     ctx.lineWidth = item.style === 'comet' ? 8 : 5;
     ctx.beginPath();
     ctx.moveTo(x - w / 2, y + 8);
@@ -225,14 +251,15 @@ function drawWorldPreview(x: number, y: number, w: number, h: number, item: Worl
   ctx.restore();
 }
 
-/* accessory preview — a neutral character orb wearing the accessory, drawn
-   statically (the shop can be open with no active run, so it can't use G.t). */
+/* accessory preview — a neutral character orb wearing the accessory. Animated off
+   performance.now() (the shop has no run G.t, but is redrawn every frame). */
 function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
   const { ctx } = view;
   const sk = skin();
   const r = 15;
   const c = item.c || sk.c;
   const tcol = item.t || sk.t;
+  const tm = performance.now() / 1000;
   ctx.save();
   // base orb
   ctx.fillStyle = sk.c;
@@ -254,7 +281,7 @@ function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
   if (item.kind === 'orbit') {
     const n = item.count || 3;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * TAU - Math.PI / 2;
+      const a = (i / n) * TAU - Math.PI / 2 + tm * 1.1;     // satellites orbit
       const sx = x + Math.cos(a) * (r + 10);
       const sy = y + Math.sin(a) * (r + 10) * 0.66;
       if (item.shape === 'star') {
@@ -280,10 +307,10 @@ function drawAccessoryPreview(x: number, y: number, item: Accessory): void {
       ctx.ellipse(x, y - r - 6, r * 0.95, r * 0.34, 0, 0, TAU);
       ctx.stroke();
     } else {
-      ctx.globalAlpha = 0.5;
+      ctx.globalAlpha = 0.35 + 0.25 * Math.sin(tm * 3);     // aura breathes
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(x, y, r + 7, 0, TAU);
+      ctx.arc(x, y, r + 7 + Math.sin(tm * 3) * 1.5, 0, TAU);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
@@ -394,7 +421,7 @@ export function renderShop(): void {
     }
     text(label, sx + segW / 2, trackY + trackH / 2, 10.5,
       active ? '#fff' : '#8a93bf', 800, 0, 'center', "'Unbounded'");
-    btn('tab' + id, sx, trackY, segW, trackH, () => { shopTab = id; Store.set('coil_shop_tab', id); });
+    btn('tab' + id, sx, trackY, segW, trackH, () => { shopTab = id; shopScroll.y = 0; Store.set('coil_shop_tab', id); });
   }
 
   // ---- item grid ----
@@ -408,13 +435,36 @@ export function renderShop(): void {
   const cw = (W - mx * 2 - gap) / cols;
   const ch = 134;
   const gy = 148 + SAFE_TOP;
+  const gridBottom = H - 76 - SAFE_BOTTOM;                 // viewport bottom (above BACK)
+  const rows = Math.ceil(list.length / cols);
+  const contentH = rows > 0 ? (rows - 1) * (ch + gap) + ch : 0;
+  shopScroll.max = Math.max(0, contentH - (gridBottom - gy));
+  shopScroll.y = clamp(shopScroll.y, 0, shopScroll.max);
+
+  // Register BACK *before* the grid so it always wins a tap, even if a scrolled
+  // card straddles its row (hitButtons is first-match). Visuals are drawn after.
+  const bw = W * 0.5;
+  const bh = 46;
+  const bx = W / 2 - bw / 2;
+  const by = H - 64 - SAFE_BOTTOM;
+  btn('back', bx, by, bw, bh, () => { shopScroll.y = 0; state.scene = 'home'; });
+
+  // Clip the grid to its viewport so scrolled cards don't paint over header/footer.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, gy - 6, W, gridBottom - gy + 12);
+  ctx.clip();
   for (let i = 0; i < list.length; i++) {
     const item = list[i];
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = mx + col * (cw + gap);
-    const y = gy + row * (ch + gap);
-    if (y > H - 78 - SAFE_BOTTOM) continue;
+    const y = gy + row * (ch + gap) - shopScroll.y;
+    if (y > gridBottom || y + ch < gy) continue;          // cull off-viewport (no draw, no button)
+    // Clamp this card's tap region to the visible viewport so a card straddling an
+    // edge can't register a hit-rect over the (button-less) header/footer.
+    const btnY = Math.max(y, gy);
+    const btnH = Math.min(y + ch, gridBottom) - btnY;
     const isOwned = owned.includes(item.id);
     const eq = eqId === item.id;
     const can = Profile.coins >= item.price;
@@ -466,13 +516,15 @@ export function renderShop(): void {
       text('EQUIPPED', pcx, y + 117, 11, acol, 800, 3);
     } else if (isOwned) {
       text('TAP TO EQUIP', pcx, y + 117, 10.5, '#9fb0e0', 700, 0);
-      btn('eq' + shopTab + item.id, x, y, cw, ch, () => equipFor(shopTab, item.id));
+      btn('eq' + shopTab + item.id, x, btnY, cw, btnH, () => equipFor(shopTab, item.id));
     } else if (item.req) {
-      // SKILL-GATED — show the requirement + a tiny progress bar, not a price.
-      // (Earned automatically when met; never buyable with coins.)
+      // SKILL ROUTE — show the requirement + progress bar. If the item ALSO has a
+      // price it's DUAL-ROUTE: reach the req for free, or buy with coins (a small
+      // "or ◎N" chip, tappable when affordable). Price-0 items stay earn-only.
       const frac = reqFraction(item.req);
-      text(reqLabel(item.req), pcx, y + 110, 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
-      text(reqProgress(item.req), pcx, y + 123, 8.5, '#8a93bf', 700, 0);
+      const dual = item.price > 0;
+      text(reqLabel(item.req), pcx, y + (dual ? 103 : 110), 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
+      text(reqProgress(item.req), pcx, y + (dual ? 115 : 123), 8.5, '#8a93bf', 700, 0);
       const bw2 = cw * 0.6;
       const bx2 = pcx - bw2 / 2;
       rr(bx2, y + ch - 12, bw2, 3, 1.5);
@@ -481,6 +533,22 @@ export function renderShop(): void {
       rr(bx2, y + ch - 12, bw2 * frac, 3, 1.5);
       ctx.fillStyle = rar.c;
       ctx.fill();
+      if (dual) {
+        const can2 = Profile.coins >= item.price;
+        const label = 'or ◎ ' + item.price.toLocaleString();
+        ctx.save();
+        ctx.font = "800 9.5px 'Sora', sans-serif";
+        const tw = ctx.measureText(label).width;
+        const chipW = tw + 16;
+        const chipX = pcx - chipW / 2;
+        const chipY = y + 124;
+        rr(chipX, chipY, chipW, 16, 8);
+        ctx.fillStyle = can2 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.05)';
+        ctx.fill();
+        ctx.restore();
+        text(label, pcx, chipY + 8, 9.5, can2 ? '#ffe39b' : '#7e88b5', 800, 0);
+        if (can2) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buy(shopTab, item));
+      }
     } else {
       // price chip
       const priceTxt = item.price.toLocaleString();
@@ -503,8 +571,19 @@ export function renderShop(): void {
       ctx.fill();
       ctx.restore();
       text(priceTxt, dotX + 4 + 5, dotY, 11, can ? '#ffe39b' : '#7e88b5', 800, 0, 'left');
-      if (can) btn('buy' + shopTab + item.id, x, y, cw, ch, () => buy(shopTab, item));
+      if (can) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buy(shopTab, item));
     }
+  }
+  ctx.restore();   // end grid clip
+
+  // scroll affordance — a thin track + thumb on the right edge when scrollable
+  if (shopScroll.max > 1) {
+    const viewH = gridBottom - gy;
+    const thumbH = Math.max(28, viewH * (viewH / contentH));
+    const ty2 = gy + (viewH - thumbH) * (shopScroll.y / shopScroll.max);
+    rr(W - 6, ty2, 3, thumbH, 1.5);
+    ctx.fillStyle = hexA(sk.c, 0.5);
+    ctx.fill();
   }
 
   // unlock-moment FX (drawn above the grid)
@@ -513,11 +592,7 @@ export function renderShop(): void {
   Shock.draw();
   Confetti.draw();
 
-  // ---- BACK button (refined outline, not a glowing slab) ----
-  const bw = W * 0.5;
-  const bh = 46;
-  const bx = W / 2 - bw / 2;
-  const by = H - 64 - SAFE_BOTTOM;
+  // ---- BACK button visuals (the hit-region was registered before the grid) ----
   rr(bx, by, bw, bh, 13);
   ctx.fillStyle = 'rgba(20,16,48,.8)';
   ctx.fill();
@@ -525,7 +600,4 @@ export function renderShop(): void {
   ctx.lineWidth = 1.5;
   ctx.stroke();
   text('BACK', W / 2, by + bh / 2, 15, sk.t, 800, 0, 'center', "'Unbounded'");
-  btn('back', bx, by, bw, bh, () => {
-    state.scene = 'home';
-  });
 }

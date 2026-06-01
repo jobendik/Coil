@@ -54,8 +54,11 @@ export const Telemetry = {
   agg: ((): TelemetryAgg => {
     const a = Store.get<TelemetryAgg | null>(KEY, null);
     if (!a) return fresh();
-    // tolerate older/partial saves
-    return { ...fresh(), ...a, deathBuckets: a.deathBuckets ?? new Array(11).fill(0) };
+    // tolerate older/partial saves — require a well-formed 11-bucket histogram so a
+    // truncated/corrupted array can't get a sparse NaN written into it by death().
+    const buckets = Array.isArray(a.deathBuckets) && a.deathBuckets.length === 11
+      ? a.deathBuckets : new Array<number>(11).fill(0);
+    return { ...fresh(), ...a, deathBuckets: buckets };
   })(),
   events: [] as Evt[],
   runStartT: 0,
@@ -81,9 +84,13 @@ export const Telemetry = {
   },
 
   runEnd(height: number, perfects: number, flings: number, reduced: boolean): void {
+    // Only trust the timing if a matching runStart was seen; otherwise `now - 0`
+    // would be full process uptime and permanently poison the latched firstRunMs.
+    const started = this.runStartT > 0;
     const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const ms = Math.max(0, Math.round(now - this.runStartT));
-    if (this.agg.firstRunMs === 0) this.agg.firstRunMs = ms;
+    const ms = started ? Math.max(0, Math.round(now - this.runStartT)) : 0;
+    this.runStartT = 0;
+    if (started && this.agg.firstRunMs === 0) this.agg.firstRunMs = ms;
     this.agg.sumHeight += height;
     this.agg.sumPerf += perfects;
     this.agg.sumFlings += flings;

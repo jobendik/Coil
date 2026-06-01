@@ -18,6 +18,7 @@ export function initCanvas(canvasId = 'cv'): void {
 }
 
 export function resize(): void {
+  if (!view.cv) return;   // resize can fire (orientation/load) before initCanvas — no-op until ready
   view.DPR = Math.min(window.devicePixelRatio || 1, 2);
   const r = view.cv.getBoundingClientRect();
   view.W = Math.round(r.width) || 360;

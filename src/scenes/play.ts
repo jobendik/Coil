@@ -6,11 +6,11 @@ import { accessory } from '../game/accessories';
 import { Profile } from '../game/profile';
 import { Pop } from '../core/particles';
 import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
-import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, pcount, rand, text } from '../core/utils';
+import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, mixHex, pcount, rand, text } from '../core/utils';
 import { btn } from '../core/ui';
-import { settings, setAimPreview, setMuted, setMusicMuted, setReducedMotion } from '../settings';
+import { settings, setAimPreview, setCbGate, setMuted, setMusicMuted, setReducedMotion } from '../settings';
 import { rr } from '../core/utils';
-import { CATCH_PAD, DAILY_MEDALS, G_FALL, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
+import { CATCH_PAD, DAILY_MEDALS, DECAY_TIME, G_FALL, LAND_SQUASH, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
 
 // Injected by main.ts so the Zen "DONE" button can bank the run without play.ts
 // importing the game-loop module (avoids a scene↔loop import cycle).
@@ -140,6 +140,56 @@ function drawNode(n: import('../types').Node): void {
     return;
   }
 
+  // DECAY gate — a fracturing, warm-to-hot unstable gate. Reads as "temporary" even
+  // before you catch it (cracks + flicker); once you're orbiting it, a depleting fuse
+  // ring + intensifying jitter/cracks make the countdown legible (drains gold→red).
+  if (n.type === 'decay') {
+    const G = state.G;
+    const orbiting = G.player.node === n && G.decayT > 0;
+    const frac = orbiting ? clamp(G.decayT / DECAY_TIME, 0, 1) : 1;   // 1 full → 0 collapsing
+    const danger = 1 - frac;                                         // 0 calm → 1 about to blow
+    const pr = n.r * (1 + Math.sin(state.G.t * 2 + (n.pulse ?? 0)) * 0.06);
+    const jit = orbiting ? danger * danger * 2.4 * fx.motion : 0;
+    const core = mixHex('#ff9b50', '#ff3b5c', danger);
+    ctx.save();
+    ctx.translate(x + (jit ? rand(-jit, jit) : 0), y + (jit ? rand(-jit, jit) : 0));
+    // flickering body
+    ctx.fillStyle = core;
+    ctx.shadowColor = core;
+    ctx.shadowBlur = glowFX(16 + danger * 14);
+    ctx.globalAlpha = 0.82 + Math.sin(state.G.t * 9 + (n.pulse ?? 0)) * 0.14;
+    ctx.beginPath();
+    ctx.arc(0, 0, pr, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // radial fracture lines — more + brighter as the fuse burns down
+    const cracks = 3 + Math.round(danger * 3);
+    ctx.strokeStyle = 'rgba(8,5,16,.85)';
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < cracks; i++) {
+      const a = (i / cracks) * TAU + (n.pulse ?? 0);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * pr * 0.5, Math.sin(a) * pr * 0.5);
+      ctx.lineTo(Math.cos(a + 0.32) * pr, Math.sin(a + 0.32) * pr);
+      ctx.stroke();
+    }
+    // depleting fuse ring (only while you're the one orbiting it)
+    if (orbiting) {
+      const rc = mixHex('#ffe39b', '#ff3b5c', danger);
+      ctx.strokeStyle = rc;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = rc;
+      ctx.shadowBlur = glowFX(10);
+      ctx.beginPath();
+      ctx.arc(0, 0, pr + 7, -Math.PI / 2, -Math.PI / 2 + TAU * frac);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
+
   const bonus = n.type === 'bonus';
   const col = bonus ? '#ffd24a' : n.type === 'small' ? sk.t : (world().node || sk.c);
   const pr = n.r * (1 + Math.sin(state.G.t * 2 + (n.pulse ?? 0)) * 0.06);
@@ -241,25 +291,43 @@ function drawGate(): void {
   const cx = n.wx;
   const cy = sY(n.wy);
   const sk = skin();
+  const cb = settings.cbGate;
+  const inPerfect = angDiff(pl.ang, sw.center) <= sw.tol;
   ctx.save();
-  // safe release band
-  ctx.strokeStyle = sk.c;
-  ctx.globalAlpha = 0.30;
-  ctx.lineWidth = 6;
   ctx.lineCap = 'round';
+  // safe release band — neutral grey in colour-blind mode so the perfect cue isn't hue-only
+  ctx.strokeStyle = cb ? 'rgba(198,208,235,0.9)' : sk.c;
+  ctx.globalAlpha = cb ? 0.22 : 0.30;
+  ctx.lineWidth = 6;
   ctx.beginPath();
   ctx.arc(cx, cy, ORBIT, sw.lo, sw.hi);
   ctx.stroke();
   // perfect band
-  const inPerfect = angDiff(pl.ang, sw.center) <= sw.tol;
   ctx.globalAlpha = inPerfect ? 1 : 0.85;
-  ctx.strokeStyle = inPerfect ? '#ffffff' : sk.t;
+  ctx.strokeStyle = (cb || inPerfect) ? '#ffffff' : sk.t;
   ctx.lineWidth = inPerfect ? 8 : 6;
-  ctx.shadowColor = inPerfect ? '#fff' : sk.t;
+  ctx.shadowColor = (cb || inPerfect) ? '#fff' : sk.t;
   ctx.shadowBlur = glowFX(inPerfect ? 16 : 8);
   ctx.beginPath();
   ctx.arc(cx, cy, ORBIT, sw.center - sw.tol, sw.center + sw.tol);
   ctx.stroke();
+  // COLOUR-BLIND aid: delineate the perfect window by SHAPE — white ticks crossing
+  // the ring at both edges + centre — so it reads without relying on hue at all.
+  if (cb) {
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = glowFX(6);
+    for (const a of [sw.center - sw.tol, sw.center, sw.center + sw.tol]) {
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(cx + c * (ORBIT - 9), cy + s * (ORBIT - 9));
+      ctx.lineTo(cx + c * (ORBIT + 9), cy + s * (ORBIT + 9));
+      ctx.stroke();
+    }
+  }
   ctx.restore();
 }
 
@@ -538,8 +606,19 @@ function drawPlayer(): void {
     }
     const sp = pl.latched ? 0 : Math.hypot(pl.vx, pl.vy);
     const stretch = clamp(sp / 1400, 0, 0.5);
-    const scale = inPerfect ? 1.08 : 1;
-    const glow = inPerfect ? 28 : 18;
+    // ---- expressive reactions (pure canvas, zero weight) ----
+    // FEAR: the rising void right beneath us. JOY: FRENZY or a fresh combo pop —
+    // it overrides fear (we're winning). LAND: squash that eases out after a catch.
+    const fear = clamp(1 - (pl.wy - G.voidY) / 200, 0, 1);
+    const joy = clamp(Math.max(G.frenzyT > 0 ? 1 : 0, G.comboFlash), 0, 1);
+    const scared = joy < 0.2 && fear > 0.45 ? fear : 0;          // cowering only when not winning
+    const happy = joy > 0.2;
+    const land = pl.land > 0 ? pl.land / LAND_SQUASH : 0;        // 1 just-caught → 0
+    const joyPulse = joy * Math.sin(G.t * 13) * 0.06;            // excited throb
+    const base = (inPerfect || happy) ? 1.08 : 1;
+    const sclX = base * (1 + stretch + land * 0.38 + joyPulse - scared * 0.05);
+    const sclY = base * (1 - stretch * 0.6 - land * 0.34 + joyPulse - scared * 0.16);
+    const glow = happy ? 30 : inPerfect ? 28 : 18;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(pl.face);
@@ -547,26 +626,34 @@ function drawPlayer(): void {
     ctx.shadowColor = sk.c;
     ctx.shadowBlur = glowFX(glow);
     ctx.beginPath();
-    ctx.ellipse(0, 0, pl.r * scale * (1 + stretch), pl.r * scale * (1 - stretch * 0.6), 0, 0, TAU);
+    ctx.ellipse(0, 0, pl.r * sclX, pl.r * sclY, 0, 0, TAU);
     ctx.fill();
     ctx.rotate(-pl.face);
     const ex = Math.cos(pl.face);
     const ey = Math.sin(pl.face);
-    const eyeR = inPerfect ? 3.0 : 2.6;
+    // blink on an irregular two-cadence schedule; suppressed while scared (eyes stay wide)
+    const bt = G.t * 0.9;
+    const blink = scared ? 0 : (((bt % 3.1) < 0.09 || (bt % 4.7) < 0.08) ? 1 : 0);
+    const eyeR = (happy || inPerfect) ? 3.0 : 2.6 + scared * 1.1;     // wide eyes when scared
+    const pupR = happy ? 1.5 : 1.3 - scared * 0.4;                    // pinprick pupils when scared
+    const lidH = blink ? 0.16 : 1;                                   // closed lid → thin slit
+    const lookDown = scared * 1.7;                                   // eyes dart toward the void below
     for (const o of [-1, 1]) {
       const px = ey * o * 3.2;
       const py = -ex * o * 3.2;
       ctx.fillStyle = '#fff';
       ctx.beginPath();
-      ctx.arc(px + ex * 2, py + ey * 2, eyeR, 0, TAU);
+      ctx.ellipse(px + ex * 2, py + ey * 2, eyeR, eyeR * lidH, 0, 0, TAU);
       ctx.fill();
-      ctx.fillStyle = '#0a0720';
-      ctx.beginPath();
-      ctx.arc(px + ex * 3.2, py + ey * 3.2, 1.3, 0, TAU);
-      ctx.fill();
+      if (!blink) {
+        ctx.fillStyle = '#0a0720';
+        ctx.beginPath();
+        ctx.arc(px + ex * 3.2, py + ey * 3.2 + lookDown, pupR, 0, TAU);
+        ctx.fill();
+      }
     }
     ctx.restore();
-    drawAccessoryAt(x, y, pl.r * scale, G.t);
+    drawAccessoryAt(x, y, pl.r * base, G.t);
   }
 }
 
@@ -735,7 +822,7 @@ function drawComboFlash(): void {
   ctx.restore();
 }
 
-function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff', col: string): void {
+function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff' | 'cb', col: string): void {
   const { ctx } = view;
   ctx.save();
   rr(x, y, s, s, 10);
@@ -807,6 +894,15 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
       ctx.lineTo(cx + 9, cy - 9);
       ctx.stroke();
     }
+  } else if (icon === 'cb') {
+    // gate ring with edge + centre ticks = the colour-blind gate aid, in miniature
+    ctx.beginPath(); ctx.arc(cx, cy, 6.5, -1.05, 1.05); ctx.stroke();
+    for (const a of [-0.9, 0, 0.9]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4);
+      ctx.lineTo(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -832,6 +928,14 @@ export function drawTopToggles(): void {
   btn('motion', x3, top, s, s, () => setReducedMotion(!settings.reducedMotion));
   drawIconBtn(x3, top, s, settings.reducedMotion ? 'motionOff' : 'motion',
     settings.reducedMotion ? '#5b6488' : '#a76bff');
+  // Colour-blind gate toggle — accessibility, set-once. Only on the home screen:
+  // the in-play row sits beside the centred height HUD and a 5th icon would collide
+  // on narrow mobile, so the menu (which has room) owns this preference.
+  if (state.scene === 'home') {
+    const x4 = pad + 4 * (s + 8);
+    btn('cbgate', x4, top, s, s, () => setCbGate(!settings.cbGate));
+    drawIconBtn(x4, top, s, 'cb', settings.cbGate ? '#9be35a' : '#5b6488');
+  }
 }
 
 /* In-world "ghost goal" markers — a line you climb toward. Normal mode shows
@@ -941,11 +1045,13 @@ function drawMeters(): void {
       ctx.fill();
       ctx.shadowBlur = 0;
     }
+    ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = "700 9px 'Unbounded', sans-serif";
     ctx.fillStyle = G.overdrive >= 1 ? '#ffd24a' : '#7e88b5';
     ctx.fillText('OVERDRIVE', W / 2, my + 12);
+    ctx.restore();
   } else {
     const fp = clamp(G.frenzyT / G.frenzyMax, 0, 1);
     const fw = 170;
@@ -1034,7 +1140,6 @@ export function renderPlay(): void {
     }
     ctx.restore();
   }
-  drawGate();
   drawTrajectory();
   // MAGNET aura — a faint pulsing ring + reach indicator while active.
   if (G.magnetT > 0) {
@@ -1052,13 +1157,14 @@ export function renderPlay(): void {
     ctx.stroke();
     ctx.restore();
   }
-  drawPlayer();
   drawTutorialHand();
   Pop.draw();
   fxDrawWorld();
-  // Re-assert the interactive layer ABOVE the celebratory FX so a big confetti
-  // /coin/shock burst can never bury where to go or where you are. The effects
-  // themselves are untouched — only the layering guarantees readability.
+  // The interactive layer (beacon + gate + player) is drawn ONCE here, ABOVE the
+  // celebratory FX, so a confetti/coin/shock burst can never bury where to go or
+  // where you are. (It used to also be drawn before the FX, but that pass was fully
+  // overwritten by this one — wasting a draw and double-compositing the player's
+  // semi-transparent trail/tether/shield to a higher opacity than intended.)
   drawTargetBeacon();
   drawGate();
   drawPlayer();

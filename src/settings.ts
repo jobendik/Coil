@@ -14,6 +14,7 @@ export const settings = {
   aimPreview: Store.get<boolean>('coil_aim', true),
   seenTut: Store.get<boolean>('coil_seen_tut_h', false),
   reducedMotion: Store.get<boolean>('coil_reduced_motion', prefersReduced),
+  cbGate: Store.get<boolean>('coil_cb_gate', false),       // colour-blind-safe gate (shape, not hue)
 };
 
 /** Push the Reduced Motion setting into the render layer's global motion scale.
@@ -48,4 +49,9 @@ export function setReducedMotion(v: boolean): void {
   settings.reducedMotion = v;
   Store.set('coil_reduced_motion', v);
   applyMotion();
+}
+
+export function setCbGate(v: boolean): void {
+  settings.cbGate = v;
+  Store.set('coil_cb_gate', v);
 }

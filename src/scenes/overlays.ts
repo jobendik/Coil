@@ -82,6 +82,10 @@ export function openOverlay(kind: Overlay): void {
   ov.opened = false;
   ov.chestDoubled = false;
   ov.adBusy = false;
+  // Clear last session's reward amounts so reopening can't flash a stale "+N ◎"
+  // for a spin/chest that was already banked.
+  ov.wheelCoins = 0;
+  ov.chestCoins = 0;
 }
 
 export function closeOverlay(): void {

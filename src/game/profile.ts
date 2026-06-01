@@ -24,6 +24,7 @@ export const Profile = {
   constellations: Store.get<number>('coil_constel', 0),
   streak: Store.get<number>('coil_streak', 0),
   lastPlayDate: Store.get<string>('coil_last_play', ''),
+  runsPlayed: Store.get<number>('coil_runs', 0),
 
   level(): number {
     let l = 1;
@@ -108,5 +109,15 @@ export const Profile = {
    */
   hasPlayedToday(): boolean {
     return this.lastPlayDate === todayKey();
+  },
+
+  /**
+   * Count a started run (any mode). Drives the minimal first-session home: the
+   * full meta-layer is hidden until the player has experienced the core loop once,
+   * protecting session-1 gameplay-conversion (CrazyGames onboarding guidance).
+   */
+  noteRun(): void {
+    this.runsPlayed += 1;
+    Store.set('coil_runs', this.runsPlayed);
   },
 };

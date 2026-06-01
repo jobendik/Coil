@@ -19,12 +19,4 @@ export const Scores = {
   submit(_h: number): void {
     /* backend/leaderboard hook: POST {height:_h} here if/when a server exists */
   },
-
-  rank(h: number): number {
-    let r = 1;
-    for (const s of this.top) {
-      if (s > h) r++;
-    }
-    return r;
-  },
 };

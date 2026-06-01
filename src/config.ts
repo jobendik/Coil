@@ -36,6 +36,21 @@ export const NEAR_PERFECT_MIN_COMBO = 5; // only protect chains worth keeping
    the near-miss rescue still fire — just sooner. */
 export const DOOM_TIMESCALE = 2.8;
 
+/* ---------- DECAY GATE (new depth beat — "unstable gate") ----------
+   A node that COLLAPSES while you orbit it: latch on and a countdown starts, so
+   you must fling away before it shatters (a fall, with shield + the once-per-run
+   near-miss rescue still saving you). It introduces TIME pressure / rhythm without
+   touching the flight or the honest gate at all — arcMinApproach launches from the
+   fixed ORBIT radius + the node centre and never reads a node's radius/decay, and
+   as a TARGET a decay gate is full-radius (decay only starts once caught). So the
+   gate-honesty invariant is preserved by construction (and re-proven over a corpus
+   that includes decay gates in scripts/gate-honesty.test.ts).
+   Window is generous: a full orbit revolution is TAU/OMEGA ≈ 2.33 s, so 1.75 s
+   leaves most of a lap to choose a release. First appears past the GLITCH STORM. */
+export const DECAY_TIME = 1.75;          // seconds before an orbited decay gate collapses
+export const DECAY_FROM_M = 280;         // height (m) at which decay gates start spawning
+export const LAND_SQUASH = 0.18;         // creature squash-on-catch duration (s)
+
 /* Upward velocity of the shield / Zen bottom bounce. High enough that the player
    clearly launches back up and visibly re-attaches to a gate (was too low). */
 export const BOUNCE_VY = 1040;
