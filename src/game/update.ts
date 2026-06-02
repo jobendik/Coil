@@ -20,6 +20,7 @@ import { DailyRun } from './dailyrun';
 import { CG } from '../core/cg';
 import { Telemetry } from '../core/telemetry';
 import { Result } from '../scenes/result';
+import { openTease } from '../scenes/tease';
 import {
   BOUNCE_VY,
   CATCH_PAD,
@@ -906,8 +907,16 @@ export function endRun(): void {
   const G = state.G;
   CG.gameplayStop();
   Telemetry.runEnd(G.height, G.perfects, G.flings, settings.reducedMotion);
-  Result.show(bankRun());
-  state.scene = 'over';
+  const data = bankRun();
+  // A real run gets the ASCENT TEASE cinematic first (auto-advances to the
+  // game-over screen). Zen has no climb / best to tease, so it goes straight there.
+  if (data.zen) {
+    Result.show(data);
+    state.scene = 'over';
+  } else {
+    openTease(data);
+    state.scene = 'tease';
+  }
 }
 
 /**

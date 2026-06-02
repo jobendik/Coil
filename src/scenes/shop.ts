@@ -16,7 +16,8 @@ import { btn } from '../core/ui';
 import { SFX } from '../core/audio';
 import { Telemetry } from '../core/telemetry';
 import { reqFraction, reqLabel, reqProgress } from '../game/unlocks';
-import { drawBG, dimVoid } from './play';
+import { drawBG } from './play';
+import { drawMenuBg } from './menubg';
 import { SKINS, TRAILS, WORLDS, ACCESSORIES } from '../config';
 import type { Accessory, Skin, Trail, World } from '../types';
 
@@ -387,7 +388,7 @@ function drawCoinPill(cx: number, cy: number): void {
 export function renderShop(): void {
   const { ctx, W, H, SAFE_TOP, SAFE_BOTTOM } = view;
   drawBG();
-  dimVoid(0.62);
+  drawMenuBg(0.62);
   const sk = skin();
 
   // ---- header ----

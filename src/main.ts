@@ -9,6 +9,7 @@ import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './sc
 import { renderPlay, setZenExitHandler } from './scenes/play';
 import { renderShop, shopDown, shopMove, shopUp, shopResetScroll } from './scenes/shop';
 import { renderAscent, ascentDown, ascentMove, ascentUp, setAscentReplay, openAscent } from './scenes/ascent';
+import { renderTease, teaseTap } from './scenes/tease';
 import { ac, loadSamples } from './core/audio';
 import { Music } from './core/music';
 import { CG } from './core/cg';
@@ -103,6 +104,8 @@ function primaryAction(): void {
   // context-sensitive primary action for keyboard play
   if (state.scene === 'play') {
     if (!state.G.dead) release();
+  } else if (state.scene === 'tease') {
+    teaseTap();
   } else if (state.scene === 'over') {
     requestReplay(state.G?.daily ?? false);
   } else if (state.scene === 'home') {
@@ -132,6 +135,11 @@ function onDown(e: PointerEvent): void {
   // and only a tap activates a card/tab/back button.
   if (state.scene === 'shop') {
     shopDown(y);
+    return;
+  }
+  // The death cinematic auto-advances; a tap skips it straight to the result.
+  if (state.scene === 'tease') {
+    teaseTap();
     return;
   }
   if (state.scene !== 'play') {
@@ -255,13 +263,18 @@ function frame(now: number): void {
     renderPlay();
     P.draw();
   } else if (state.scene === 'over') {
-    renderPlay();
-    P.draw();
+    // Result.render() draws its own (menu) backdrop, so the frozen play world
+    // is no longer painted underneath.
     Result.render();
   } else if (state.scene === 'shop') {
     renderShop();
   } else if (state.scene === 'ascent') {
     renderAscent(dt);
+  } else if (state.scene === 'tease') {
+    // death cinematic drawn over the frozen final play frame
+    renderPlay();
+    P.draw();
+    renderTease(dt);
   }
   ctx.restore();
 

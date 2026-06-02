@@ -11,10 +11,11 @@ import { CG } from '../core/cg';
 import { SFX, cheerSwell, cymbal } from '../core/audio';
 import { Coins, Confetti, FlyCoins, bankXY } from '../core/fx';
 import { buzz } from '../core/haptics';
-import { clamp, glowFX, hexA, lerp, rr, TAU, text } from '../core/utils';
+import { clamp, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
-import { dimVoid } from './play';
+import { drawBG } from './play';
+import { drawMenuBg } from './menubg';
 import { openAscent } from './ascent';
 import { MILESTONES, MILESTONE_SKINS, SKINS, TRAILS, WORLDS } from '../config';
 
@@ -146,7 +147,7 @@ export const Result = {
   },
 
   /** The next still-locked milestone evolution form — the height-earned reward
-   *  that drives the always-visible "Ascent" near-miss bar on this screen.
+   *  that drives the bottom ASCENT button's "↑ Xm" tease and glow.
    *  Returns null only when every form is already evolved. */
   nextForm(): { name: string; c: string; t: string; h: number; frac: number; gap: number } | null {
     for (const s of MILESTONE_SKINS) {
@@ -159,97 +160,6 @@ export const Result = {
       };
     }
     return null;
-  },
-
-  /** The always-visible climb visualization: a slim vertical rail down the left
-   *  margin (the game's natural axis). It shows, at a glance, how high you've
-   *  climbed (the lit frontier to your best), where THIS run reached (an animated
-   *  marker that rises on every death), every evolution form as a notch (earned =
-   *  bright in its colour, locked = dim), and the next reward as a pulsing glow
-   *  just above. Tapping anywhere on the rail expands the full tower. */
-  ascentRail(open: () => void): void {
-    const { ctx, W, H } = view;
-    const rx = Math.max(15, W * 0.05);
-    const yBot = H * 0.90;
-    const yTop = H * 0.135;
-    const span = yBot - yTop;
-    const forms = MILESTONE_SKINS;
-    const TOP = (forms[forms.length - 1].req?.value as number) || forms.length * 100;
-    const Y = (h: number): number => yBot - (clamp(h, 0, TOP) / TOP) * span;
-    const sk = skin();
-
-    ctx.save();
-    ctx.lineCap = 'round';
-
-    // background spine
-    ctx.strokeStyle = 'rgba(255,255,255,.10)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(rx, yBot);
-    ctx.lineTo(rx, yTop);
-    ctx.stroke();
-
-    // lit frontier — how high you've ever climbed (your best), dim
-    ctx.strokeStyle = hexA(sk.c, 0.3);
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(rx, yBot);
-    ctx.lineTo(rx, Y(Profile.best));
-    ctx.stroke();
-
-    // THIS run's climb — a bright line that animates rising on every death
-    const e = 1 - Math.pow(1 - clamp((this.t - 0.15) / 1.1, 0, 1), 3);
-    const my = Y(this.d.h * e);
-    ctx.strokeStyle = sk.c;
-    ctx.shadowColor = sk.c;
-    ctx.shadowBlur = glowFX(10);
-    ctx.lineWidth = 3.5;
-    ctx.beginPath();
-    ctx.moveTo(rx, yBot);
-    ctx.lineTo(rx, my);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-
-    // evolution-form notches (earned bright, locked dim, next one pulsing)
-    const nextId = (forms.find((s) => !Owned.includes(s.id)) || {}).id;
-    for (const s of forms) {
-      const h = (s.req?.value as number) || 0;
-      const y = Y(h);
-      if (s.id === nextId) {
-        const pulse = 0.5 + 0.5 * Math.sin(this.t * 4);
-        ctx.fillStyle = s.c;
-        ctx.shadowColor = s.c;
-        ctx.shadowBlur = glowFX(8 + pulse * 9);
-        ctx.beginPath();
-        ctx.arc(rx, y, 4.5 + pulse * 1.6, 0, TAU);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      } else if (Owned.includes(s.id)) {
-        ctx.fillStyle = hexA(s.c, 0.9);
-        ctx.beginPath();
-        ctx.arc(rx, y, 2.8, 0, TAU);
-        ctx.fill();
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,.16)';
-        ctx.beginPath();
-        ctx.arc(rx, y, 2.4, 0, TAU);
-        ctx.fill();
-      }
-    }
-
-    // "you are here" marker for this run (a small chevron beside the rail)
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.moveTo(rx + 6, my);
-    ctx.lineTo(rx + 12, my - 4);
-    ctx.lineTo(rx + 12, my + 4);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.restore();
-
-    // whole rail taps through to the full climb tower
-    btn('ascrail', 0, yTop - 12, rx + 24, span + 24, open);
   },
 
   /** Closest-to-earned, still-locked skill-gated cosmetic, as a one-line carrot.
@@ -405,7 +315,11 @@ export const Result = {
     const { ctx, W, H } = view;
     const d = this.d;
     const hd = this.header();
-    dimVoid(0.82);
+    // The game-over screen is a meta screen, so it shares the menu backdrop
+    // (drawBG is the fallback base until the image decodes). The veil is a touch
+    // stronger than the menu's for text contrast over the stat-heavy layout.
+    drawBG();
+    drawMenuBg(0.58);
     // celebratory FX render ON TOP of the dim so they stay visible
     Confetti.draw();
     Coins.draw();
@@ -425,9 +339,6 @@ export const Result = {
     const nf = this.nextForm();
     const justForm = d.claimedUnlocks.find((nm) => MILESTONE_SKINS.some((s) => s.name === nm)) ?? null;
     const openTower = (): void => { openAscent(d.h, justForm); state.scene = 'ascent'; };
-    // The climb is shown immediately as a slim vertical rail down the left margin —
-    // not hidden behind a tap. (Registered before the full-screen replay catch-all.)
-    this.ascentRail(openTower);
     let by = H * 0.36;
     for (let i = 0; i < this.bars.length; i++) {
       const b = this.bars[i];
