@@ -35,12 +35,11 @@ global.navigator = { vibrate() {}, userAgent: 'node' };
 global.Audio = function () { return { play() {}, pause() {}, addEventListener() {} }; };
 
 const root = path.resolve(__dirname, '..');
-// Invoke esbuild's JS entry with the current `node` rather than the `.bin`
-// shim. The shim is extensionless on POSIX (`esbuild`) but a `.cmd` on Windows,
-// and Node 20+ refuses to spawn a `.cmd` via execFileSync without `shell: true`
-// (CVE-2024-27980) — so spawning the shim directly fails with ENOENT/EINVAL on
-// Windows. Running `node node_modules/esbuild/bin/esbuild …` is fully
-// cross-platform, needs no shell, and avoids any argument-escaping pitfalls.
+// Call the esbuild native binary directly. In esbuild 0.17+ the file at
+// node_modules/esbuild/bin/esbuild is the native platform binary (ELF on
+// Linux, Mach-O on macOS, PE on Windows) — passing it as an argument to
+// `node` fails with "SyntaxError: Invalid or unexpected token".
+// Calling it as the executable works cross-platform and needs no shell.
 const esbuild = path.join(root, 'node_modules', 'esbuild', 'bin', 'esbuild');
 const tests = fs.readdirSync(__dirname).filter((f) => f.endsWith('.test.ts'));
 
@@ -48,7 +47,7 @@ let anyFail = false;
 for (const t of tests) {
   const src = path.join(__dirname, t);
   const out = path.join(os.tmpdir(), t.replace(/\.ts$/, '.cjs'));
-  execFileSync(process.execPath, [esbuild, src, '--bundle', '--format=cjs', '--platform=node',
+  execFileSync(esbuild, [src, '--bundle', '--format=cjs', '--platform=node',
     '--loader:.mp3=text', '--loader:.css=text', '--outfile=' + out], { stdio: 'inherit' });
   console.log('\n▶ ' + t);
   try {
