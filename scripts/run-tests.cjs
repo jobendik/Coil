@@ -10,6 +10,7 @@ const W = 390, H = 740;
 function fakeCanvas() {
   return {
     width: W, height: H,
+    addEventListener() {}, removeEventListener() {},
     getBoundingClientRect: () => ({ width: W, height: H, left: 0, top: 0, right: W, bottom: H }),
     getContext: () => ({ setTransform() {}, save() {}, restore() {}, fillRect() {},
       beginPath() {}, arc() {}, fill() {}, stroke() {}, moveTo() {}, lineTo() {},

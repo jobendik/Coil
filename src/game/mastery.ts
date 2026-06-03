@@ -10,7 +10,7 @@ import { Profile } from './profile';
    ========================================================================= */
 
 export const Mastery = {
-  xp: Store.get<Record<number, number>>('coil_mastery', {}),
+  xp: Store.obj<Record<number, number>>('coil_mastery', {}),
 
   perfects(zone: number): number {
     return this.xp[zone] ?? 0;

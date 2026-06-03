@@ -5,7 +5,7 @@ import { Store } from '../core/store';
  *  loop ("can I beat my #2?"). submit() is the place to wire a backend
  *  POST if/when one exists. */
 export const Scores = {
-  top: Store.get<number[]>('coil_top', []),
+  top: Store.arr<number>('coil_top', []),
 
   add(h: number): void {
     if (h <= 0) return;

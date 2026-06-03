@@ -48,6 +48,18 @@ export function initCanvas(canvasId = 'cv'): void {
   if (!ctx) throw new Error('Could not get 2D rendering context');
   view.cv = cv;
   view.ctx = ctx;
+  // Mobile GPUs (especially low-RAM Android, which is much of the CrazyGames
+  // audience) can REVOKE the 2D context when the tab is backgrounded under memory
+  // pressure. Without recovery the context is never reacquired: every draw call
+  // silently no-ops and the canvas stays permanently BLANK (the rAF loop keeps
+  // running invisibly) until a manual reload. Reacquire + reapply the DPR
+  // transform on restore. preventDefault on 'contextlost' is required for the
+  // browser to fire 'contextrestored'. (No-op on engines that never emit these.)
+  cv.addEventListener('contextlost', (e) => { e.preventDefault(); });
+  cv.addEventListener('contextrestored', () => {
+    const c = cv.getContext('2d');
+    if (c) { view.ctx = c; resize(); }
+  });
 }
 
 export function resize(): void {

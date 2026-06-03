@@ -15,7 +15,12 @@ export function ac(): AudioContext | null {
   }
   if (AC && AC.state === 'suspended') {
     try {
-      AC.resume();
+      // resume() returns a Promise on modern engines; it REJECTS when called
+      // outside a user gesture (Chrome/iOS), and ac() is reached from rAF and
+      // setTimeout callbacks too. Swallow the rejection so it isn't an uncaught
+      // rejection every frame while suspended. (Old Safari returns void — guard.)
+      const p = AC.resume();
+      if (p && typeof p.then === 'function') p.catch(() => { /* gesture still pending */ });
     } catch {
       /* ignored */
     }
@@ -189,7 +194,12 @@ const Samples = {
       for (const url of sampleUrls[name]) {
         fetch(url)
           .then((r) => r.arrayBuffer())
-          .then((ab) => a.decodeAudioData(ab))
+          // Callback form, wrapped in a Promise: the promise-returning overload of
+          // decodeAudioData only exists from Safari 14.1+; older iOS (13/14, which
+          // can't update further) returns undefined from it, so `.then(b => …)`
+          // would push an undefined buffer and every SFX would silently fall back
+          // to procedural synthesis. The callback form works on every engine.
+          .then((ab) => new Promise<AudioBuffer>((res, rej) => a.decodeAudioData(ab, res, rej)))
           .then((b) => { (this.buf[name] || (this.buf[name] = [])).push(b); })
           .catch(() => { /* keep the procedural fallback for this event */ });
       }

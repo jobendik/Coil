@@ -74,6 +74,45 @@ export const Store = {
   },
 
   /**
+   * Array-typed read. Returns the stored value ONLY if it actually parses to an
+   * array, otherwise a fresh copy of the default. This guards the white-screen
+   * class of bug: `Store.get` catches *malformed* JSON, but valid-JSON-of-the-
+   * wrong-type (e.g. a number or object stored under an array key) sails through
+   * — and the cast `as T[]` is erased at runtime, so the consumer's `.includes()`
+   * / `.unshift()` then throws at MODULE-LOAD time and the game never starts.
+   * Wrong-type data is realistic here: a schema change between builds, or a key
+   * collision on the shared crazygames.com localStorage origin (every embedded
+   * CrazyGames title sees the same storage).
+   */
+  arr<T>(k: string, d: T[]): T[] {
+    const v = this.get<unknown>(k, null);
+    return Array.isArray(v) ? (v as T[]) : d.slice();
+  },
+
+  /**
+   * Number-typed read. Only a finite number passes; anything else (string, bool,
+   * array, object, null, NaN, Infinity) returns the default. Stops a wrong-type
+   * value from triggering a string-concat cascade (`[] + 5 === "5"`, then
+   * re-persisted as a string forever) or a NaN/Infinity from entering game state.
+   */
+  num(k: string, d: number): number {
+    const v = this.get<unknown>(k, null);
+    return typeof v === 'number' && Number.isFinite(v) ? v : d;
+  },
+
+  /**
+   * Plain-object ("dictionary") read. Returns the stored value only if it's a
+   * non-null, non-array object, else a fresh copy of the default. Without this a
+   * wrong-type value (e.g. a number under `coil_ach`) makes a later
+   * `this.unlocked[id] = …` throw a TypeError in strict-mode ESM (assigning a
+   * property on a primitive), breaking the run-end flow.
+   */
+  obj<T extends object>(k: string, d: T): T {
+    const v = this.get<unknown>(k, null);
+    return v != null && typeof v === 'object' && !Array.isArray(v) ? (v as T) : { ...d };
+  },
+
+  /**
    * Called once after the CrazyGames SDK initialises. If THIS device has no
    * local profile yet but the player's cloud save does (i.e. a returning,
    * logged-in player on a new device), copy the cloud keys into localStorage so
@@ -107,9 +146,14 @@ export const Store = {
         if (v != null) { localStorage.setItem(k, v); copied++; }
       } catch { failed++; }
     }
-    // Only latch "done" on a clean copy, so a transient failure (e.g. quota) can
-    // retry next session rather than permanently giving up on a partial restore.
-    if (failed === 0) { try { sessionStorage.setItem('coil_hydrated', '1'); } catch { /* ignore */ } }
+    // Latch UNCONDITIONALLY once we've attempted a copy. sessionStorage survives the
+    // reload that follows, so the latch guarantees at most one hydrate→reload per
+    // tab — even if some keys failed to copy (quota). Previously the latch was only
+    // written on a fully clean copy, so a partial failure on the profile key left
+    // localHasProfile=false forever → hydrate returns true → reload → LOOP. Any keys
+    // that failed here are re-mirrored to the cloud by the next normal set().
+    void failed;
+    try { sessionStorage.setItem('coil_hydrated', '1'); } catch { /* ignore */ }
     return copied > 0;
   },
 };

@@ -23,20 +23,20 @@ function yesterdayKey(): string {
 const WEEK_MS = 7 * 86_400_000;
 
 export const Profile = {
-  xp: Store.get<number>('coil_xp', 0),
-  coins: Store.get<number>('coil_coins', 0),
-  best: Store.get<number>('coil_best', 0),
-  bestCombo: Store.get<number>('coil_best_combo', 0),
-  constellations: Store.get<number>('coil_constel', 0),
-  streak: Store.get<number>('coil_streak', 0),
+  xp: Store.num('coil_xp', 0),
+  coins: Store.num('coil_coins', 0),
+  best: Store.num('coil_best', 0),
+  bestCombo: Store.num('coil_best_combo', 0),
+  constellations: Store.num('coil_constel', 0),
+  streak: Store.num('coil_streak', 0),
   lastPlayDate: Store.get<string>('coil_last_play', ''),
-  runsPlayed: Store.get<number>('coil_runs', 0),
-  highestZone: Store.get<number>('coil_top_zone', 0),
-  graceMs: Store.get<number>('coil_grace_ms', 0),   // last streak-grace use (forgiving streak, M4)
+  runsPlayed: Store.num('coil_runs', 0),
+  highestZone: Store.num('coil_top_zone', 0),
+  graceMs: Store.num('coil_grace_ms', 0),   // last streak-grace use (forgiving streak, M4)
   graceUsedThisStart: false,                          // did the just-started run consume a grace? (drives a gentle toast)
-  shards: Store.get<number>('coil_shards', 0),        // ◈ premium collectible currency (M8)
-  lifetimeHeight: Store.get<number>('coil_life_h', 0), // total metres ever climbed (career milestones, M8)
-  perfectsTotal: Store.get<number>('coil_life_perf', 0), // lifetime perfect snaps (career milestones, M8)
+  shards: Store.num('coil_shards', 0),        // ◈ premium collectible currency (M8)
+  lifetimeHeight: Store.num('coil_life_h', 0), // total metres ever climbed (career milestones, M8)
+  perfectsTotal: Store.num('coil_life_perf', 0), // lifetime perfect snaps (career milestones, M8)
 
   addShards(n: number): void {
     if (n <= 0) return;
@@ -69,19 +69,17 @@ export const Profile = {
   },
 
   level(): number {
-    let l = 1;
-    let x = this.xp;
-    while (x >= xpForLevel(l)) {
-      x -= xpForLevel(l);
-      l++;
-    }
-    return l;
+    return this.levelProgress().l;
   },
 
   levelProgress(): { l: number; cur: number; need: number } {
     let l = 1;
-    let x = this.xp;
-    while (x >= xpForLevel(l)) {
+    // Coerce defensively: xp is loaded via Store.num (finite), but a same-session
+    // Infinity here would make `x -= finite` stay Infinity and spin forever — and
+    // this runs every frame on the home/result screens. The l<1000 ceiling is far
+    // above any reachable level, so it never bites in normal play.
+    let x = Number.isFinite(this.xp) ? this.xp : 0;
+    while (x >= xpForLevel(l) && l < 1000) {
       x -= xpForLevel(l);
       l++;
     }

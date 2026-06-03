@@ -6,7 +6,7 @@ import type { Accessory } from '../types';
    the skins/collection pattern: an Owned list + an equipped id, both persisted
    and cloud-synced via Store. 'none' is always owned so the slot can be cleared. */
 
-export const OwnedAccessories: string[] = Store.get<string[]>('coil_accs', ['none']);
+export const OwnedAccessories: string[] = Store.arr<string>('coil_accs', ['none']);
 if (!OwnedAccessories.includes('none')) OwnedAccessories.unshift('none');
 
 export const accessoryState = {

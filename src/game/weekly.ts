@@ -62,6 +62,13 @@ export const Weekly = {
     const valid = stored !== null && stored.week === k
       && Array.isArray(stored.missions) && stored.missions.length === WEEKLY_GOALS.length;
     this.d = valid ? (stored as WeeklyData) : freshWeek(k);
+    // Normalize fields that may be ABSENT in a save written by an older build
+    // (the `valid` check above only verifies week + missions). Without this,
+    // noteDay()'s `this.d.days.includes(...)` throws inside startPlay() — which is
+    // swallowed by the pointer handler, so PLAY silently does nothing.
+    if (!Array.isArray(this.d.days)) this.d.days = [];
+    if (typeof this.d.chestClaimed !== 'boolean') this.d.chestClaimed = false;
+    if (typeof this.d.eliteGranted !== 'boolean') this.d.eliteGranted = false;
     if (!valid) this.save();
   },
 
