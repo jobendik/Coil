@@ -751,7 +751,12 @@ function drawPlayer(): void {
   const y = sY(pl.wy);
   const sk = skin();
   const frenzy = G.frenzyT > 0;
-  const visualR = pl.r * (frenzy ? 1.42 : 1.32);
+  // Visual-only scale. The creature is the game's identity/mascot, so it's drawn
+  // ~15% larger than its physics radius — note this keys off a render multiplier,
+  // NOT pl.r (the collision radius the honest-gate proof depends on, which must not
+  // change). Everything below (face, aura, eyes, accessory) derives from visualR, so
+  // this single constant scales the whole creature coherently and keeps it legible.
+  const visualR = pl.r * (frenzy ? 1.62 : 1.52);
 
   if (!pl.latched && pl.trail.length > 1) {
     // per-equipped-trail flight ribbon — gives each unlock a real visual identity
@@ -943,7 +948,11 @@ function drawPlayer(): void {
     const base = (inPerfect || happy) ? 1.08 : 1;
     const sclX = base * (1 + stretch + land * 0.38 + joyPulse - scared * 0.05);
     const sclY = base * (1 - stretch * 0.6 - land * 0.34 + joyPulse - scared * 0.16);
-    const glow = happy ? 38 : inPerfect ? 34 : 24;
+    // Idle glow lifted (24→30) so the resting creature carries a touch more cyan
+    // presence and reads as the focal mascot, not just another white orb. Single
+    // instance per frame, so the extra blur is perf-negligible (glowFX still caps it
+    // on low/medium). Perfect/joy stay where they were — already strong.
+    const glow = happy ? 38 : inPerfect ? 34 : 30;
     ctx.save();
     ctx.translate(x, y);
     if (fx.level !== 'low') {
@@ -975,7 +984,7 @@ function drawPlayer(): void {
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(255,255,255,.62)';
-    ctx.lineWidth = 1.3;
+    ctx.lineWidth = Math.max(1.3, visualR * 0.12);   // proportional rim — stays crisp at the larger body
     ctx.beginPath();
     ctx.ellipse(0, 0, visualR * sclX + 0.5, visualR * sclY + 0.5, 0, 0, TAU);
     ctx.stroke();
