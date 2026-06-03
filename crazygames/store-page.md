@@ -68,20 +68,32 @@ Make 2–3 thumbnail variants and A/B them in the dashboard once live (CTR is me
 
 ---
 
-## 3. Tags / categories
+## 3. Categories
 
-Pick from CrazyGames' existing tag taxonomy (don't invent tags). Target set:
+CrazyGames lets you pick **exactly 5** categories, from a fixed taxonomy (don't invent
+tags). NOTE: the taxonomy does **not** contain Arcade / Casual / Hypercasual / High Score /
+Endless / Touchscreen — pick only from the real list. Verified set:
 
-- **Arcade** (primary genre)
-- **Casual**
-- **Hypercasual** (if available — matches the one-tap loop)
-- **Skill**
-- **High Score** / **Endless** (whichever the taxonomy uses for endless-runner scoring)
-- **1 Player**
-- **Mouse** + **Touchscreen** (controls; the game supports keyboard too)
+- **2D** — real art-style browse filter (2D vs 3D).
+- **Skill** — the core perfect-timing release loop; sticky, on-genre audience.
+- **Physics** — accurate (fling/orbit movement, `src/game/physics.ts`) and well-trafficked.
+- **Avoid** — the central tension: outrun the rising lava void.
+- **Jumping** — discovery bet: vertical one-tap climbers live here; pulls the
+  ascend-forever crowd.
 
-Avoid over-tagging — pick the 5–7 most accurate; mistagging hurts watch-time KPIs because
-it draws the wrong audience.
+Slot-5 alternative: **Running** (endless-runner crowd) instead of Jumping — but Jumping
+fits a *vertical* climber better.
+
+Deliberately NOT used:
+- **1 Player** — a structural tag nobody browses to discover a game; the freed slot is
+  better spent on a descriptive/discovery tag (single-player is already implied by leaving
+  the "multiplayer" form box unchecked).
+- **Collect / Relaxing / Ball / Escape** — mistag risk (Collect implies in-run collecting,
+  not meta cosmetics; only Zen mode is calm; Ball/Escape read as other genres). Mistagging
+  hurts watch-time KPIs by drawing the wrong audience.
+
+Controls/device are a **separate** part of the submission form (mobile-support + SDK-mute
+checkboxes, controls text field) — not category slots, so don't spend categories on them.
 
 ---
 
@@ -114,7 +126,7 @@ while a lava void rises beneath you. Easy to start, genuinely hard to master.
 
 ★ One-tap controls — tap, click, or press Space (phone, tablet, and desktop)
 ★ Perfect-timing combos, an Overdrive meter, and an explosive Frenzy mode
-★ Collect a galaxy of characters, trails, and worlds — some bought with coins,
+★ Collect a galaxy of characters, trails, worlds, and gear — some bought with coins,
   others EARNED by climbing higher, chaining bigger combos, and keeping your streak alive
 ★ A fresh seeded Daily Challenge every day, plus daily missions, weekly orders, and login streaks
 ★ Constellation chains, a free seasonal reward track, and the Star Vault — a
@@ -141,7 +153,7 @@ clear, accurate copy.
 
 CrazyGames' mobile homepage has stricter bars; we already meet them, but verify at submit:
 
-- [x] Initial download well under the mobile cap (JS ~56 KB gz; the ~7.8 MB of music
+- [x] Initial download well under the mobile cap (JS ~59 KB gz; the ~8 MB of music
       streams lazily *after* the first tap, one track at a time, so it isn't part of first paint).
 - [x] Touchscreen controls, no hover-dependent UI.
 - [x] Portrait-friendly layout with safe-area insets (top + bottom) handled.
