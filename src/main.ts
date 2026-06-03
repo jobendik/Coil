@@ -9,6 +9,7 @@ import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './sc
 import { renderPlay, setZenExitHandler } from './scenes/play';
 import { renderShop, shopDown, shopMove, shopUp, shopResetScroll } from './scenes/shop';
 import { renderAscent, ascentDown, ascentMove, ascentUp, setAscentReplay, openAscent } from './scenes/ascent';
+import { renderSeason, seasonDown, seasonMove, seasonUp } from './scenes/season';
 import { renderTease, teaseTap } from './scenes/tease';
 import { ac, loadSamples } from './core/audio';
 import { Music } from './core/music';
@@ -20,7 +21,8 @@ import { clamp, rand, text } from './core/utils';
 import { Telemetry } from './core/telemetry';
 import { claimEarnedUnlocks } from './game/unlocks';
 import { Profile } from './game/profile';
-import { DEBUG, DOOM_TIMESCALE } from './config';
+import { Weekly } from './game/weekly';
+import { DEBUG, DOOM_TIMESCALE, NEAR_MISS_SLOWMO_TS } from './config';
 
 Telemetry.session();
 // Grant any skill-gated cosmetics the player already qualifies for (e.g. from
@@ -41,7 +43,7 @@ function startPlay(daily = false, zen = false): void {
   maybeShowStartToast();
   Telemetry.runStart(daily);
   Profile.noteRun();          // reveals the full home meta after the first run
-  Music.cycle();              // crossfade to a fresh track each run (anti-fatigue; no-op w/ 1 track)
+  if (!zen) Weekly.noteDay();  // forgiving weekly activity meter (M4) — idempotent per day
   state.scene = 'play';
   CG.gameplayStart();
 }
@@ -131,6 +133,10 @@ function onDown(e: PointerEvent): void {
     ascentDown(y);
     return;
   }
+  if (state.scene === 'season') {
+    seasonDown(y);
+    return;
+  }
   // Shop grid scrolls vertically: defer the hit-test to pointerup so a drag scrolls
   // and only a tap activates a card/tab/back button.
   if (state.scene === 'shop') {
@@ -160,11 +166,13 @@ view.cv.addEventListener('contextmenu', (e) => e.preventDefault());
 // and on release treat a negligible move as a tap (run the hit-test there).
 view.cv.addEventListener('pointermove', (e) => {
   if (state.scene === 'ascent') ascentMove(pos(e).y);
+  else if (state.scene === 'season') seasonMove(pos(e).y);
   else if (state.scene === 'shop') shopMove(pos(e).y);
 }, { passive: true });
 view.cv.addEventListener('pointerup', (e) => {
   const { x, y } = pos(e);
   if (state.scene === 'ascent') { if (ascentUp()) hitButtons(x, y); }
+  else if (state.scene === 'season') { if (seasonUp()) hitButtons(x, y); }
   else if (state.scene === 'shop') { if (shopUp()) hitButtons(x, y); }
 }, { passive: false });
 
@@ -213,7 +221,11 @@ function frame(now: number): void {
     // slows together; the timer itself counts down in real time so it ends when
     // expected. The fixed timestep is preserved → physics stay deterministic.
     let ts = 1;
-    if (state.G && state.G.doomed && !state.G.dead) {
+    if (state.G && state.G.dead && state.G.nearMiss) {
+      // Honest near-miss death (M2): slow the tumble so the "MISSED BY n m" reads
+      // and the "so close" sting lands before the instant-retry result screen.
+      ts = NEAR_MISS_SLOWMO_TS;
+    } else if (state.G && state.G.doomed && !state.G.dead) {
       // Doomed fling: fast-forward the inevitable fall (real physics still run,
       // so wall-bounce luck and the near-miss rescue can still save you — sooner).
       ts = DOOM_TIMESCALE;
@@ -237,16 +249,15 @@ function frame(now: number): void {
   P.upd(dt);
   Pop.upd(dt);
   fxUpd(dt);
-  // Zen bed swaps in during calm mode; everything settles outside of play. The
-  // intensity layer rises with the combo and pins to full during FRENZY, so the
-  // single music track gains variation right when the player is performing well.
+  // Music beds: the gameplay/zen track during play, the stable lobby theme on
+  // home & shop, and 'hold' over the end-of-run comedown (result / ascent /
+  // tease) so the run's bed keeps playing until the player returns home.
   if (state.scene === 'play' && state.G) {
-    const g = state.G;
-    Music.setZen(g.zen);
-    Music.setIntensity((g.zen || g.dead) ? 0 : g.frenzyT > 0 ? 1 : clamp((g.combo - 3) / 9, 0, 0.7));
+    Music.setScene('play', state.G.zen);
+  } else if (state.scene === 'home' || state.scene === 'shop') {
+    Music.setScene('lobby', false);
   } else {
-    Music.setZen(false);
-    Music.setIntensity(0);
+    Music.setScene('hold', false);
   }
   Music.upd(dt);
   updateShake(dt);
@@ -270,6 +281,8 @@ function frame(now: number): void {
     renderShop();
   } else if (state.scene === 'ascent') {
     renderAscent(dt);
+  } else if (state.scene === 'season') {
+    renderSeason(dt);
   } else if (state.scene === 'tease') {
     // death cinematic drawn over the frozen final play frame
     renderPlay();
@@ -363,13 +376,17 @@ if (import.meta.env.DEV) {
     setHeight: (h: number) => { if (state.G) { state.G.height = h; state.G.maxY = state.G.player.wy; } },
     setBest: (h: number) => { Profile.best = h; },
     openAscent: (h: number, earned: string | null = null) => { openAscent(h, earned); state.scene = 'ascent'; },
+    stepFrames: (frames = 1) => {
+      if (state.scene !== 'play' || !state.G) return;
+      for (let i = 0; i < frames; i++) update(FIXED);
+    },
     // perf instrumentation: force an FX tier and microbenchmark the pure render
     // cost (one play frame rendered N times). Sidesteps headless rAF throttling —
     // pair with CDP CPU throttling to emulate a low-end phone. Returns ms total.
     setFx: (lvl: 'low' | 'medium' | 'high') => { fx.level = lvl; },
     getFx: () => fx.level,
     benchRender: (iters = 120) => {
-      if (state.scene !== 'play') return -1;
+      if (state.scene !== 'play' || !state.G) return -1;
       const t0 = performance.now();
       for (let i = 0; i < iters; i++) renderPlay();
       return performance.now() - t0;

@@ -4,6 +4,7 @@ import { settings } from '../settings';
 import { Profile } from './profile';
 import { setRunSeed } from './nodes';
 import { dailySeed } from './dailyrun';
+import { Echo } from './echo';
 import { fxClear } from '../core/fx';
 import { DAILY_VW, FRENZY_TIME } from '../config';
 
@@ -24,6 +25,9 @@ export function resetRun(daily = false, zen = false): void {
   // markRunStart returns true on the FIRST run of a new calendar day, and rolls
   // the login streak forward as a side effect.
   const firstOfDay = Profile.markRunStart();
+  // Echo ghost (M5): record this run; replay the stored best only in normal mode
+  // (the Daily route differs, and Zen has no best to race).
+  Echo.start(!daily && !zen);
   const G: GameState = {
     t: 0,
     cameraY: -0.42 * H,
@@ -81,6 +85,10 @@ export function resetRun(daily = false, zen = false): void {
     potWon: 0,
     freezeT: 0,
     bestNearShown: false,
+    missGapPx: 1e9,
+    missNode: null,
+    nearMiss: false,
+    missM: 0,
     doomed: false,
     _doomTick: 0,
     decayT: 0,
@@ -136,7 +144,11 @@ export function sY(wy: number): number {
  */
 export function maybeShowStartToast(): void {
   const G = state.G;
-  if (G.firstRunOfDay) {
+  // A forgiving-streak grace (M4) is the gentlest possible "welcome back" — surface
+  // it warmly, never as a warning. It takes the slot over the 2× toast when both apply.
+  if (Profile.graceUsedThisStart) {
+    G.toast = { txt: `🔥 STREAK SAVED · DAY ${Profile.streak}`, t: 2.2, c: '#ff9b50' };
+  } else if (G.firstRunOfDay) {
     G.toast = { txt: `2× COINS · DAY ${Profile.streak}`, t: 2.0, c: '#ffe39b' };
   }
 }

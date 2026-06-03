@@ -4,6 +4,8 @@ import { state } from '../game/state';
 import { Profile } from '../game/profile';
 import { Daily } from '../game/daily';
 import { DailyRun } from '../game/dailyrun';
+import { Season } from '../game/season';
+import { Career } from '../game/career';
 import { Owned, skin } from '../game/skins';
 import { OwnedTrails, OwnedWorlds } from '../game/collection';
 import { reqMet } from '../game/unlocks';
@@ -17,19 +19,21 @@ import { Telemetry } from '../core/telemetry';
 import { drawBG } from './play';
 import { drawMenuBg } from './menubg';
 import { openAscent } from './ascent';
-import { MILESTONES, MILESTONE_SKINS, SKINS, TRAILS, WORLDS } from '../config';
+import { MILESTONES, MILESTONE_SKINS, SEASON_TIERS, SKINS, TRAILS, WORLDS } from '../config';
 
 interface ResultBar {
   label: string;
   to: number;
   color: string;
   val: string;
+  roll?: boolean;   // render the animated coin count-up instead of the static val
 }
 
-// How long after death the result screen must be visible before the
-// "tap anywhere to play again" zone activates. Just long enough for the player
-// to register the new stats — short enough that the loop stays addictive.
-const REPLAY_ZONE_DELAY = 0.55;
+// How long after the result screen appears before the "tap anywhere to play
+// again" zone activates. Kept short to honour the instant-retry rule
+// (coil-retention-plan.md M1) — long enough that the fatal release-tap can't
+// bleed through and skip the screen, short enough that the loop stays instant.
+const REPLAY_ZONE_DELAY = 0.3;
 
 /**
  * `requestReplay` and `requestRevive` are injected by main.ts so the result
@@ -50,14 +54,23 @@ export const Result = {
   d: null as unknown as ResultData,
   t: 0,
   bars: [] as ResultBar[],
+  fastBar: null as unknown as ResultBar,
+  fast: false,        // instant-retry path: render ONE nearest-progress bar (M3)
   anim: [] as number[],
   coinRoll: 0,        // animated count-up of the run's coin payoff (the ◎ bar)
   doubled: false,
   busyAd: false,
 
-  show(d: ResultData): void {
+  /**
+   * @param fast when true (an ordinary, non-notable death) the screen renders a
+   *   single nearest-to-complete progress bar for an instant-retry feel
+   *   (coil-retention-plan.md M3). The full multi-bar stack is kept for the
+   *   notable / post-tease path (fast=false).
+   */
+  show(d: ResultData, fast = false): void {
     this.d = d;
     this.t = 0;
+    this.fast = fast;
     this.coinRoll = 0;
     this.doubled = false;
     this.busyAd = false;
@@ -80,9 +93,21 @@ export const Result = {
         to: this.nextUnlockPct(),
         color: '#ff4d8d',
         val: '◎ +' + d.coins,
+        roll: true,
       },
     ];
-    this.anim = this.bars.map(() => 0);
+    // Season progress joins the full (notable) stack so the live-service track is
+    // visible on the big result; the fast path surfaces it only when it's nearest.
+    if (!d.zen) {
+      this.bars.push({
+        label: 'SEASON · TIER ' + Season.d.tier,
+        to: Season.d.tier >= SEASON_TIERS ? 1 : Season.tierProgress(),
+        color: '#a76bff',
+        val: d.seasonGain > 0 ? '+' + d.seasonGain + ' XP' : 'TIER ' + Season.d.tier,
+      });
+    }
+    this.fastBar = this.nearestBar();
+    this.anim = this.drawnBars().map(() => 0);
     // celebratory bursts (drawn on top of the dim in render)
     if (d.potWon > 0) { Confetti.rain(70); cymbal(0.6); }
     if (d.newBest) Confetti.rain(40);
@@ -90,6 +115,8 @@ export const Result = {
     if (d.achievements.length) setTimeout(() => { SFX.unlock(); cymbal(0.3); buzz([30, 50, 30]); }, 600);
     // Earning a skill-gated cosmetic is a peak moment — give it its own fanfare.
     if (d.claimedUnlocks.length) { Confetti.rain(60); setTimeout(() => { SFX.unlock(); cymbal(0.45); buzz([20, 40, 20, 40]); }, 500); }
+    // A season tier-up (M6) is a small, earned reward beat.
+    if (d.seasonTierUp > 0) { Confetti.rain(34); setTimeout(() => { SFX.unlock(); cymbal(0.3); }, 450); }
   },
 
   /** rewarded DOUBLE COINS — pure upside, opt-in, once per result. */
@@ -119,6 +146,42 @@ export const Result = {
     const ms = Daily.missions();
     const done = ms.filter((m) => m.done).length;
     return `${done}/${ms.length}`;
+  },
+
+  /** The bars rendered this frame: a single nearest-progress bar on the fast
+   *  (instant-retry) path, or the full stack otherwise. */
+  drawnBars(): ResultBar[] {
+    return this.fast ? [this.fastBar] : this.bars;
+  },
+
+  /**
+   * The single most-finishable progress bar — the goal-gradient hook for the
+   * fast result screen (coil-retention-plan.md M3 / §5.2). Priority by *closeness
+   * to completion*: PB-proximity > daily > season > next-cosmetic. Picks the
+   * highest fill that's still < 1 (the bar the player is closest to finishing);
+   * if everything is maxed it falls back to the coin payoff bar.
+   */
+  nearestBar(): ResultBar {
+    const d = this.d;
+    const cands: ResultBar[] = [];
+    if (Profile.best > 0 && !d.newBest && !d.zen) {
+      const frac = clamp(d.h / Profile.best, 0, 1);
+      cands.push({ label: 'BEST ' + Profile.best + ' m', to: frac, color: '#ffd24a',
+        val: '−' + Math.max(0, Profile.best - d.h) + ' m' });
+    }
+    if (!d.zen && !Daily.allDone()) {
+      cands.push({ label: 'DAILY MISSIONS', to: Daily.pct(), color: '#ffb020',
+        val: this.dailyValLabel() });
+    }
+    if (!d.zen && Season.d.tier < SEASON_TIERS) {
+      cands.push({ label: 'SEASON · TIER ' + Season.d.tier, to: Season.tierProgress(),
+        color: '#a76bff', val: '+' + d.seasonGain + ' XP' });
+    }
+    cands.push({ label: this.nextUnlockLabel(), to: this.nextUnlockPct(), color: '#ff4d8d',
+      val: '◎ +' + d.coins, roll: true });
+    let best: ResultBar | null = null;
+    for (const c of cands) if (c.to < 1 && (!best || c.to > best.to)) best = c;
+    return best ?? cands[cands.length - 1];
   },
 
   /** The cheapest unowned, COIN-buyable cosmetic across all three categories.
@@ -251,6 +314,11 @@ export const Result = {
       if (left > 0) return `Save ${left} ◎ to unlock ${u.name}`;
       return `You can afford ${u.name} — check the collection`;
     }
+    // Long-tail carrot: the nearest career milestone (e.g. "73,200 / 100,000 m").
+    const cm = Career.nearest();
+    if (cm && cm.frac >= 0.2) {
+      return `${cm.value.toLocaleString()} / ${cm.m.t.toLocaleString()} · ${cm.m.label}`;
+    }
     return `Beat your best: ${Profile.best} m`;
   },
 
@@ -279,6 +347,7 @@ export const Result = {
     // A big run can unlock many cosmetics at once, so fit the names to the screen
     // width and collapse the overflow into "+N more" instead of bleeding off-edge.
     if (d.claimedUnlocks.length) return [this.fitUnlocks(d.claimedUnlocks), '#9be35a'];
+    if (d.careerDone.length) return ['✦ CAREER · ' + d.careerDone[0], '#ffd24a'];
     if (d.potWon > 0) return ['★ +' + d.potWon + ' STAR VAULT', '#ffd24a'];
     if (d.dailyMedals.length) return [d.dailyMedals.map((m) => m.name).join(' + ') + ' MEDAL', '#ffd24a'];
     if (d.constellations > 0) return ['✦ ' + d.constellations + ' CONSTELLATION' + (d.constellations > 1 ? 'S' : ''), '#cdb4ff'];
@@ -291,15 +360,17 @@ export const Result = {
 
   upd(dt: number): void {
     this.t += dt;
-    for (let i = 0; i < this.bars.length; i++) {
+    const drawn = this.drawnBars();
+    for (let i = 0; i < drawn.length; i++) {
       if (this.t > 0.3 + i * 0.45) {
-        this.anim[i] = lerp(this.anim[i], this.bars[i].to, Math.min(1, dt * 5));
+        this.anim[i] = lerp(this.anim[i], drawn[i].to, Math.min(1, dt * 5));
       }
     }
-    // Count-up the coin payoff in step with its bar revealing — a casino-style
+    // Count-up the coin payoff in step with the bars revealing — a casino-style
     // roll with the short 'tick' (internally throttled). Re-targets automatically
-    // if DOUBLE COINS raises d.coins mid-roll.
-    const coinStart = 0.3 + 2 * 0.45;
+    // if DOUBLE COINS raises d.coins mid-roll. The start scales with the bar count
+    // so the fast (one-bar) screen still rolls promptly.
+    const coinStart = 0.3 + drawn.length * 0.4;
     if (this.t > coinStart) {
       if (this.coinRoll < this.d.coins) {
         const step = Math.max(1, Math.ceil((this.d.coins - this.coinRoll) * Math.min(1, dt * 4.5)));
@@ -339,9 +410,13 @@ export const Result = {
     const nf = this.nextForm();
     const justForm = d.claimedUnlocks.find((nm) => MILESTONE_SKINS.some((s) => s.name === nm)) ?? null;
     const openTower = (): void => { openAscent(d.h, justForm); state.scene = 'ascent'; };
-    let by = H * 0.36;
-    for (let i = 0; i < this.bars.length; i++) {
-      const b = this.bars[i];
+    // Fast (instant-retry) path renders the single nearest bar; the full stack is
+    // kept for the notable / post-tease path (M3). One bar starts a little lower
+    // so it reads as the focal hook rather than a lonely first row.
+    const drawn = this.drawnBars();
+    let by = this.fast ? H * 0.42 : H * 0.36;
+    for (let i = 0; i < drawn.length; i++) {
+      const b = drawn[i];
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.font = "600 12px 'Sora'";
@@ -349,9 +424,9 @@ export const Result = {
       ctx.fillText(b.label, W * 0.12, by);
       ctx.textAlign = 'right';
       ctx.fillStyle = b.color;
-      // the coin payoff bar (i===2) shows the live count-up; it glows + scales
-      // briefly while the number is still climbing, then settles.
-      if (i === 2) {
+      // a roll bar shows the live coin count-up; it glows + scales briefly while
+      // the number is still climbing, then settles.
+      if (b.roll) {
         const rolling = this.coinRoll < d.coins;
         ctx.save();
         if (rolling) {
@@ -378,10 +453,26 @@ export const Result = {
       ctx.shadowBlur = 0;
       by += 46;
     }
+    // On the fast path the chosen bar may not be the coin bar, but "Sparks earned"
+    // is a required element (§5.2) — surface the run's coin payoff as its own line.
+    if (this.fast && !drawn.some((b) => b.roll) && d.coins > 0) {
+      text('◎ +' + Math.round(this.coinRoll), W / 2, by + 2, 16, '#ffd24a', 800, 8);
+      by += 30;
+    }
     if (d.leveledUp) text('LEVEL UP!', W / 2, by + 4, 16, '#2ff3e0', 800, 10);
     if (d.dailyJustDone) {
       text('MISSION COMPLETE  ◎+' + d.dailyReward,
         W / 2, by + (d.leveledUp ? 26 : 4), 14, '#9be35a', 700, 8);
+    }
+    if (d.seasonTierUp > 0 && !this.fast) {
+      const yOff = (d.leveledUp ? 22 : 0) + (d.dailyJustDone ? 22 : 0) + 4;
+      text('SEASON TIER UP' + (d.seasonTierUp > 1 ? ' ×' + d.seasonTierUp : ''),
+        W / 2, by + yOff, 14, '#cdb4ff', 800, 8);
+    }
+    if (d.masteryUp > 0 && !this.fast) {
+      const yOff = (d.leveledUp ? 22 : 0) + (d.dailyJustDone ? 22 : 0) + (d.seasonTierUp > 0 ? 22 : 0) + 4;
+      text('ZONE MASTERY UP' + (d.masteryUp > 1 ? ' ×' + d.masteryUp : ''),
+        W / 2, by + yOff, 13, '#9be35a', 800, 6);
     }
     // Zen has no death, so there's nothing to revive from — only offer DOUBLE COINS.
     // Guard state.G (every other scene does): if there's somehow no run, don't offer revive.

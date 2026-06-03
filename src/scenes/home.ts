@@ -5,13 +5,17 @@ import { Profile } from '../game/profile';
 import { Daily } from '../game/daily';
 import { DailyRun } from '../game/dailyrun';
 import { Vault } from '../game/vault';
+import { Season } from '../game/season';
+import { openSeason } from './season';
+import { Event } from '../game/events';
+import { SFX } from '../core/audio';
 import { glowFX, TAU, clamp, rr, text, hexA, mixHex } from '../core/utils';
 import { btn, resetButtons } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
 import { drawBG, drawTopToggles, drawAccessoryAt } from './play';
 import { Wheel, Chest } from '../game/rewards';
 import { overlayKind, openOverlay, drawOverlay, maybeAutoOpenLogin } from './overlays';
-import { MILESTONES, SKINS } from '../config';
+import { MILESTONES, SEASON_TIERS, SKINS } from '../config';
 import { drawMenuBg } from './menubg';
 import type { Goal } from '../types';
 
@@ -409,6 +413,30 @@ function iconCart(cx: number, cy: number, col: string): void {
   ctx.restore();
 }
 
+/* circular-arrow "reroll" glyph */
+function iconReroll(cx: number, cy: number, col: string): void {
+  const { ctx } = view;
+  ctx.save();
+  ctx.strokeStyle = col;
+  ctx.fillStyle = col;
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, -0.5, TAU - 1.1);
+  ctx.stroke();
+  // arrowhead at the open end
+  const a = TAU - 1.1;
+  const ax = cx + Math.cos(a) * 6;
+  const ay = cy + Math.sin(a) * 6;
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(ax - 3.5, ay - 1);
+  ctx.lineTo(ax + 0.5, ay + 3.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 type MissionFam = 'runs' | 'coins' | 'height' | 'perf' | 'combo';
 function missionFamily(id: string): MissionFam {
   if (id.startsWith('height')) return 'height';
@@ -521,6 +549,7 @@ function drawRewardIcons(): void {
   const top = pad + SAFE_TOP;
   const wx = W - pad - s;
   const cxx = W - pad - 2 * s - 8;
+  const vxx = W - pad - 3 * s - 16;
 
   const pill = (x: number): void => {
     rr(x, top, s, s, 10);
@@ -582,6 +611,26 @@ function drawRewardIcons(): void {
   ctx.restore();
   if (Chest.available()) badge(cxx);
   btn('homechest', cxx, top, s, s, () => openOverlay('chest'));
+
+  // Weekly Orders shortcut — a small checklist glyph opening the weekly overlay.
+  pill(vxx);
+  ctx.save();
+  const vx = vxx + s / 2;
+  const vy = top + s / 2;
+  ctx.strokeStyle = '#9be35a';
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 3; i++) {
+    const ly = vy - 7 + i * 7;
+    ctx.beginPath();
+    ctx.moveTo(vx - 8, ly);
+    ctx.lineTo(vx - 4, ly);
+    ctx.moveTo(vx - 1, ly);
+    ctx.lineTo(vx + 8, ly);
+    ctx.stroke();
+  }
+  ctx.restore();
+  btn('homeweekly', vxx, top, s, s, () => openOverlay('weekly'));
 }
 
 export function renderHome(dt: number): void {
@@ -597,6 +646,11 @@ export function renderHome(dt: number): void {
   // ---- logo + tagline + hero orbit ----
   drawGlossLogo(cx, cy - 118);
   text('Tap in the glowing gate · climb the void', cx, cy - 74, 13, '#9fb0e0', 600, 0);
+  // weekly event chip (M8) — the "scheduled to return for" hook
+  const ev = Event.current();
+  if (ev.id !== 'none' && Profile.runsPlayed >= 1) {
+    chipPill(cx, cy - 54, '⚡ ' + ev.name + ' · ' + ev.desc, '#ffd24a');
+  }
   drawHeroOrbit(cx, cy, 64);
 
   // ---- FIRST SESSION: only the core loop + one pulsing PLAY (onboarding) ----
@@ -675,12 +729,35 @@ export function renderHome(dt: number): void {
     chipPill(cx, chipY, '✦ ' + Profile.constellations + ' CONSTELLATIONS', '#cdb4ff');
   }
 
-  // ---- DAILY MISSIONS PANEL (between the stats card and the NEXT line) ----
+  // ---- SEASON banner (tappable → the full 30-tier track) ----
   const mX = W * 0.07;
   const mW = W * 0.86;
-  const mTop = statY + statH + 12;
+  const seasonY = statY + statH + 10;
+  const seasonH = 30;
+  rr(mX, seasonY, mW, seasonH, 10);
+  ctx.fillStyle = 'rgba(30,22,60,0.7)';
+  ctx.fill();
+  rr(mX, seasonY, mW, seasonH, 10);
+  ctx.strokeStyle = hexA('#a76bff', 0.4);
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  text('SEASON · TIER ' + Season.d.tier, mX + 12, seasonY + seasonH / 2, 11, '#cdb4ff', 800, 0, 'left', "'Unbounded'");
+  // mini progress bar
+  const sbW = mW * 0.34;
+  const sbX = mX + mW - sbW - 40;
+  rr(sbX, seasonY + seasonH / 2 - 3, sbW, 6, 3);
+  ctx.fillStyle = 'rgba(255,255,255,.08)';
+  ctx.fill();
+  rr(sbX, seasonY + seasonH / 2 - 3, sbW * (Season.d.tier >= SEASON_TIERS ? 1 : Season.tierProgress()), 6, 3);
+  ctx.fillStyle = '#a76bff';
+  ctx.fill();
+  text('▸', mX + mW - 16, seasonY + seasonH / 2, 14, '#cdb4ff', 800, 0, 'center');
+  btn('homeseason', mX, seasonY, mW, seasonH, () => { openSeason('home'); state.scene = 'season'; });
+
+  // ---- DAILY MISSIONS PANEL (between the season banner and the NEXT line) ----
+  const mTop = seasonY + seasonH + 10;
   const mBottom = nextY - 14;
-  const mH = Math.max(96, mBottom - mTop);
+  const mH = Math.max(90, mBottom - mTop);
   card(mX, mTop, mW, mH);
   const bx = W * 0.1;
   const bw = W * 0.8;
@@ -705,15 +782,26 @@ export function renderHome(dt: number): void {
     ctx.lineWidth = 1;
     ctx.stroke();
     drawMissionIcon(bx + 11, y, missionFamily(g.id), tierCol, g);
+    // The one daily reroll (M4) shows a ⟳ on each incomplete row; tapping any one
+    // swaps that mission for another in the same tier and spends the day's reroll.
+    const rerollable = !m.done && Daily.canReroll();
+    const barRight = bx + bw - (rerollable ? 26 : 0);
+    const valX = rerollable ? bx + bw - 30 : bx + bw;
     // label + value
     text((m.done ? '✓ ' : '') + g.text(g.t), bx + 30, y - 3, 11, m.done ? '#9be35a' : '#dfe7ff', 600, 0, 'left');
     text(m.done ? '+' + g.reward + ' ◎' : Math.min(m.prog, g.t) + '/' + g.t,
-      bx + bw, y - 3, 10.5, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
+      valX, y - 3, 10.5, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
+    if (rerollable) {
+      iconReroll(bx + bw - 9, y - 3, '#9fb0e0');
+      btn('dreroll' + i, bx + bw - 22, y - 14, 26, 26, () => {
+        if (Daily.reroll(i)) SFX.click();
+      });
+    }
     // bar
-    rr(bx + 30, y + 8, bw - 30, 5, 3);
+    rr(bx + 30, y + 8, barRight - (bx + 30), 5, 3);
     ctx.fillStyle = 'rgba(255,255,255,.07)';
     ctx.fill();
-    rr(bx + 30, y + 8, (bw - 30) * pct, 5, 3);
+    rr(bx + 30, y + 8, (barRight - (bx + 30)) * pct, 5, 3);
     ctx.fillStyle = tierCol;
     if (!m.done) { ctx.shadowColor = tierCol; ctx.shadowBlur = glowFX(6); }
     ctx.fill();

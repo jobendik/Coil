@@ -15,6 +15,7 @@ export const settings = {
   seenTut: Store.get<boolean>('coil_seen_tut_h', false),
   reducedMotion: Store.get<boolean>('coil_reduced_motion', prefersReduced),
   cbGate: Store.get<boolean>('coil_cb_gate', false),       // colour-blind-safe gate (shape, not hue)
+  echoVisible: Store.get<boolean>('coil_echo_on', true),   // race-your-best ghost (M5)
 };
 
 /** Push the Reduced Motion setting into the render layer's global motion scale.
@@ -54,4 +55,9 @@ export function setReducedMotion(v: boolean): void {
 export function setCbGate(v: boolean): void {
   settings.cbGate = v;
   Store.set('coil_cb_gate', v);
+}
+
+export function setEchoVisible(v: boolean): void {
+  settings.echoVisible = v;
+  Store.set('coil_echo_on', v);
 }

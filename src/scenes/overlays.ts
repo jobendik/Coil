@@ -1,6 +1,9 @@
 import { view } from '../core/canvas';
 import { Profile } from '../game/profile';
+import { Weekly } from '../game/weekly';
+import { Season } from '../game/season';
 import { Login, Wheel, Chest, LOGIN_REWARDS, WHEEL_SEGMENTS } from '../game/rewards';
+import { WEEKLY_ACTIVITY_DAYS } from '../config';
 import { TAU, clamp, glowFX, hexA, lerp, rr, text } from '../core/utils';
 import { btn } from '../core/ui';
 import { SFX, cymbal } from '../core/audio';
@@ -17,7 +20,7 @@ import { dimVoid } from './play';
    do nothing instead of leaking through.
    ========================================================================= */
 
-export type Overlay = 'none' | 'login' | 'wheel' | 'chest';
+export type Overlay = 'none' | 'login' | 'wheel' | 'chest' | 'weekly';
 
 const ov = {
   kind: 'none' as Overlay,
@@ -39,6 +42,7 @@ const ov = {
   openT: 0,
   opened: false,
   chestCoins: 0,
+  chestShards: 0,
   chestDoubled: false,
   // shared rewarded-ad guard (prevents double-trigger while an ad loads)
   adBusy: false,
@@ -425,7 +429,8 @@ function drawChest(dt: number): void {
   const bx = cx - bw / 2;
   const by = p.y + p.h - 70;
   if (ov.opened) {
-    text('+' + ov.chestCoins + ' ◎', cx, by - 30, 24, '#ffd24a', 800, 12, 'center', "'Unbounded'");
+    text('+' + ov.chestCoins + ' ◎' + (ov.chestShards > 0 ? '   +' + ov.chestShards + ' ◈' : ''),
+      cx, by - 30, 22, '#ffd24a', 800, 12, 'center', "'Unbounded'");
     const hasNext = Chest.count > 0;
     const nextLabel = hasNext ? 'OPEN NEXT (' + Chest.count + ')' : 'CONTINUE';
     const nextCol = hasNext ? '#ffd24a' : '#9be35a';
@@ -470,12 +475,93 @@ function startOpen(): void {
   if (Chest.count <= 0) return;
   const r = Chest.open();
   ov.chestCoins = r.coins;
+  ov.chestShards = r.shards;
   ov.opening = true;
   ov.opened = false;
   ov.openT = 0;
   ov.chestDoubled = false;
   SFX.click();
   buzz(12);
+}
+
+/* ----------------------------------- WEEKLY ORDERS ----------------------------------- */
+function drawWeekly(): void {
+  const { ctx, W, H } = view;
+  // A taller dedicated panel (5 orders + activity meter need more room than the
+  // shared reward panel gives).
+  const w = Math.min(W * 0.9, 460);
+  const h = Math.min(H * 0.84, 580);
+  const p = { x: W / 2 - w / 2, y: H / 2 - h / 2, w, h };
+  rr(p.x, p.y, p.w, p.h, 20);
+  const g = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
+  g.addColorStop(0, 'rgba(32,26,64,.98)');
+  g.addColorStop(1, 'rgba(14,10,30,.99)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  rr(p.x, p.y, p.w, p.h, 20);
+  ctx.strokeStyle = 'rgba(255,255,255,.12)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  const cx = W / 2;
+  text('WEEKLY ORDERS', cx, p.y + 32, 21, '#9be35a', 800, 12, 'center', "'Unbounded'");
+  text('Climb any ' + WEEKLY_ACTIVITY_DAYS + ' days this week · streak-friendly', cx, p.y + 56, 10.5, '#9fb0e0', 700, 0);
+
+  // activity dots
+  const days = Weekly.activityDays();
+  const dotN = WEEKLY_ACTIVITY_DAYS;
+  const dotGap = 26;
+  const dotY = p.y + 86;
+  const dotX0 = cx - ((dotN - 1) * dotGap) / 2;
+  for (let i = 0; i < dotN; i++) {
+    const on = i < days;
+    ctx.beginPath();
+    ctx.arc(dotX0 + i * dotGap, dotY, 7, 0, TAU);
+    ctx.fillStyle = on ? '#9be35a' : 'rgba(255,255,255,.12)';
+    if (on) { ctx.shadowColor = '#9be35a'; ctx.shadowBlur = glowFX(8); }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+  text(Weekly.d.chestClaimed ? 'Activity chest earned ✓' : days + '/' + dotN + ' days · ' + (dotN - days) + ' to a chest',
+    cx, dotY + 22, 10, Weekly.d.chestClaimed ? '#9be35a' : '#ffe39b', 700, 0);
+
+  // 5 order rows
+  const ms = Weekly.missions();
+  const listTop = p.y + 128;
+  const listBot = p.y + p.h - 96;
+  const rowH = (listBot - listTop) / ms.length;
+  const lx = p.x + 26;
+  const lw = p.w - 52;
+  for (let i = 0; i < ms.length; i++) {
+    const m = ms[i];
+    const go = Weekly.goalFor(m);
+    const y = listTop + i * rowH + rowH / 2;
+    const pct = clamp(m.prog / go.t, 0, 1);
+    const c = m.done ? '#9be35a' : '#2ff3e0';
+    text((m.done ? '✓ ' : '') + go.text(go.t), lx, y - 7, 11.5, m.done ? '#9be35a' : '#dfe7ff', 600, 0, 'left');
+    text(m.done ? '+' + go.reward + ' ◎' : Math.min(m.prog, go.t) + '/' + go.t,
+      lx + lw, y - 7, 10.5, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
+    rr(lx, y + 6, lw, 5, 3);
+    ctx.fillStyle = 'rgba(255,255,255,.07)';
+    ctx.fill();
+    rr(lx, y + 6, lw * pct, 5, 3);
+    ctx.fillStyle = c;
+    if (!m.done) { ctx.shadowColor = c; ctx.shadowBlur = glowFX(5); }
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Elite Track status — the honest "earned premium track" (M8).
+  const eliteY = p.y + p.h - 78;
+  if (Season.d.eliteUnlocked) {
+    text('★ ELITE TRACK UNLOCKED — claim it in SEASON', cx, eliteY, 11, '#ffd24a', 800, 8);
+  } else {
+    text('Complete all 5 to unlock the season ELITE TRACK', cx, eliteY, 10.5, '#cdb4ff', 700, 0);
+  }
+
+  const bw = p.w * 0.6;
+  actionButton('weeklyok', cx - bw / 2, p.y + p.h - 62, bw, 48, 'CONTINUE', '#9be35a', '#04130a', () => closeOverlay());
+  absorber();
 }
 
 export function drawOverlay(dt: number): void {
@@ -491,6 +577,7 @@ export function drawOverlay(dt: number): void {
   if (ov.kind === 'login') drawLogin();
   else if (ov.kind === 'wheel') drawWheel(dt);
   else if (ov.kind === 'chest') drawChest(dt);
+  else if (ov.kind === 'weekly') drawWeekly();
   // transient "ad unavailable" feedback so a failed rewarded tap isn't silent
   if (ov.adMsgT > 0) {
     ov.adMsgT -= dt;

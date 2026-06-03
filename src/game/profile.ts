@@ -10,11 +10,17 @@ function todayKey(): string {
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
 
-function yesterdayKey(): string {
+function nDaysAgoKey(n: number): string {
   const d = new Date();
-  d.setDate(d.getDate() - 1);
+  d.setDate(d.getDate() - n);
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 }
+
+function yesterdayKey(): string {
+  return nDaysAgoKey(1);
+}
+
+const WEEK_MS = 7 * 86_400_000;
 
 export const Profile = {
   xp: Store.get<number>('coil_xp', 0),
@@ -25,6 +31,42 @@ export const Profile = {
   streak: Store.get<number>('coil_streak', 0),
   lastPlayDate: Store.get<string>('coil_last_play', ''),
   runsPlayed: Store.get<number>('coil_runs', 0),
+  highestZone: Store.get<number>('coil_top_zone', 0),
+  graceMs: Store.get<number>('coil_grace_ms', 0),   // last streak-grace use (forgiving streak, M4)
+  graceUsedThisStart: false,                          // did the just-started run consume a grace? (drives a gentle toast)
+  shards: Store.get<number>('coil_shards', 0),        // ◈ premium collectible currency (M8)
+  lifetimeHeight: Store.get<number>('coil_life_h', 0), // total metres ever climbed (career milestones, M8)
+  perfectsTotal: Store.get<number>('coil_life_perf', 0), // lifetime perfect snaps (career milestones, M8)
+
+  addShards(n: number): void {
+    if (n <= 0) return;
+    this.shards += n;
+    Store.set('coil_shards', this.shards);
+  },
+
+  spendShards(n: number): boolean {
+    if (this.shards < n) return false;
+    this.shards -= n;
+    Store.set('coil_shards', this.shards);
+    return true;
+  },
+
+  /** Accrue lifetime totals (drives career milestones). Pass the run deltas. */
+  addLifetime(heightDelta: number, perfDelta: number): void {
+    if (heightDelta > 0) { this.lifetimeHeight += heightDelta; Store.set('coil_life_h', this.lifetimeHeight); }
+    if (perfDelta > 0) { this.perfectsTotal += perfDelta; Store.set('coil_life_perf', this.perfectsTotal); }
+  },
+
+  /** Record the highest Zone index ever reached. Returns true the FIRST time a
+   *  new top zone is reached (drives the "notable death" Ascent tease + a toast). */
+  noteZone(z: number): boolean {
+    if (z > this.highestZone) {
+      this.highestZone = z;
+      Store.set('coil_top_zone', z);
+      return true;
+    }
+    return false;
+  },
 
   level(): number {
     let l = 1;
@@ -91,9 +133,18 @@ export const Profile = {
    */
   markRunStart(): boolean {
     const today = todayKey();
+    this.graceUsedThisStart = false;
     if (this.lastPlayDate === today) return false;
     if (this.lastPlayDate === yesterdayKey()) {
       this.streak += 1;
+    } else if (this.lastPlayDate === nDaysAgoKey(2) && (Date.now() - this.graceMs) >= WEEK_MS) {
+      // FORGIVING STREAK (M4): missing a single day no longer resets the streak.
+      // One automatic grace per week bridges a one-day gap — the streak continues
+      // instead of collapsing to 1. No anxiety copy; a gentle "streak saved" toast.
+      this.streak += 1;
+      this.graceMs = Date.now();
+      this.graceUsedThisStart = true;
+      Store.set('coil_grace_ms', this.graceMs);
     } else {
       this.streak = 1;
     }

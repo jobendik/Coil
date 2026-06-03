@@ -133,13 +133,15 @@ export const Chest = {
     return this.count > 0;
   },
 
-  /** Open one chest. Generous coin range; consumes one from the stash. */
-  open(): { coins: number } {
-    if (this.count <= 0) return { coins: 0 };
+  /** Open one chest. Generous coin range + a few ◈ shards; consumes one. */
+  open(): { coins: number; shards: number } {
+    if (this.count <= 0) return { coins: 0, shards: 0 };
     this.count -= 1;
     Store.set('coil_chests', this.count);
     const coins = Math.round(rand(180, 420) / 10) * 10;
+    const shards = Math.round(rand(3, 9));
     Profile.addCoins(coins);
-    return { coins };
+    Profile.addShards(shards);
+    return { coins, shards };
   },
 };

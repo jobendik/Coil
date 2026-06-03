@@ -34,6 +34,17 @@ export const EARLY_EASE_END = 50;        // height (m) at which the boost decays
 export const NEAR_MISS_RADIUS = 90;      // world-px radius for the one-per-run save rescue
 export const DEATH_ANIM = 0.30;          // shortened death animation for snappier restart loop
 
+/* ---------- honest near-miss death (M2) ----------
+   When a fatal fling sailed past a catchable pivot by only a small surface-gap,
+   the death is sold as an honest near-miss: the tumble slows (SLOWMO_TS) and an
+   honest "MISSED BY n m" reads out — true information (the real closest approach),
+   never theatre. Above the threshold the death is ordinary (no false "so close").
+   The displayed gap is the genuine min distance the orb came to being caught. */
+export const NEAR_MISS_SHOW_PX = 78;     // ≈6.5 m — gap (beyond the catch radius) that still reads as "so close"
+export const NEAR_MISS_SLOWMO_TS = 0.42; // time-scale during a near-miss death tumble
+export const NEAR_MISS_ANIM = 0.56;      // game-time death window on a near-miss (≈1.3 s real at SLOWMO_TS)
+export const PX_PER_M = 12;              // world px per metre (height = (maxY+90)/12)
+
 /* ---------- near-perfect combo protection (anti-rage-quit) ----------
    Once per run, a fling that JUST misses the perfect window while the player
    is on a worthwhile chain is forgiven: the combo is preserved (not broken)
@@ -77,6 +88,9 @@ export const DEBUG = false;
    `leaderboards`) to light up the weekly-height board with zero further work. */
 export const LEADERBOARDS_ENABLED = false;
 export const LEADERBOARD_ID = 'weekly_height';
+/* Daily Ascent shared-seed board (M7). Dormant alongside the weekly board until
+   the CrazyGames leaderboard invite arrives; submitted from the daily run end. */
+export const DAILY_LEADERBOARD_ID = 'daily_ascent';
 
 /* ---------- profile titles ---------- */
 export const TITLES = [
@@ -139,9 +153,9 @@ export const ACCESSORIES: Accessory[] = [
   { id: 'moons',    name: 'Moons',        price: 300,  kind: 'orbit', c: null,      t: null,      tag: 'Orbit', count: 3, shape: 'moon' },
   { id: 'stardust', name: 'Stardust Ring',price: 550,  kind: 'orbit', c: '#ffe39b', t: '#fff6c2', tag: 'Orbit', count: 5, shape: 'star' },
   { id: 'halo',     name: 'Halo',         price: 450,  kind: 'aura',  c: '#cfe9ff', t: '#ffffff', tag: 'Aura',  glyph: 'halo' },
-  { id: 'nova',     name: 'Nova Aura',    price: 0,    kind: 'aura',  c: '#a9ecff', t: '#d5f8ff', tag: 'Aura',  glyph: 'soft', req: { kind: 'constel', value: 5 } },
-  { id: 'crown',    name: 'Crown',        price: 0,    kind: 'crown', c: '#ffd24a', t: '#fff6c2', tag: 'Royal', glyph: 'crown', req: { kind: 'combo', value: 8 } },
-  { id: 'visor',    name: 'Visor',        price: 0,    kind: 'crown', c: '#2ff3e0', t: '#9ffff2', tag: 'Tech',  glyph: 'visor', req: { kind: 'height', value: 700 } },
+  { id: 'nova',     name: 'Nova Aura',    price: 0,    kind: 'aura',  c: '#a9ecff', t: '#d5f8ff', tag: 'Aura',  glyph: 'soft', req: { kind: 'constel', value: 5 }, shardPrice: 90 },
+  { id: 'crown',    name: 'Crown',        price: 0,    kind: 'crown', c: '#ffd24a', t: '#fff6c2', tag: 'Royal', glyph: 'crown', req: { kind: 'combo', value: 8 }, shardPrice: 110 },
+  { id: 'visor',    name: 'Visor',        price: 0,    kind: 'crown', c: '#2ff3e0', t: '#9ffff2', tag: 'Tech',  glyph: 'visor', req: { kind: 'height', value: 700 }, shardPrice: 90 },
 ];
 
 /* ---------- worlds (backdrop + void colour + node accent — cosmetic) ---------- */
@@ -174,6 +188,22 @@ export const GOALS: Goal[] = [
   { id: 'comboH',   t: 8,   kind: 'runmax', text: (n) => `Chain an x${n} combo`,             reward: 150, tier: 'hard' },
   { id: 'perfH',    t: 40,  kind: 'cum',    text: (n) => `Land ${n} perfect flings`,         reward: 150, tier: 'hard' },
 ];
+
+/* ---------- WEEKLY ORDERS (M4) ----------
+   5 fixed, aspirational weekly tasks (cumulative across the week). Completing all
+   five unlocks the season's Elite Track (M8). Larger rewards than dailies. The
+   goal ids start with their metric family so the same report(kind,val) matching
+   the dailies use works unchanged. */
+export const WEEKLY_GOALS: Goal[] = [
+  { id: 'heightW', t: 1000, kind: 'runmax', text: (n) => `Reach ${n} m in one run`,    reward: 250, tier: 'hard' },
+  { id: 'perfW',   t: 100,  kind: 'cum',    text: (n) => `Land ${n} perfect flings`,   reward: 200, tier: 'hard' },
+  { id: 'runsW',   t: 15,   kind: 'cum',    text: (n) => `Play ${n} runs`,             reward: 150, tier: 'med'  },
+  { id: 'comboW',  t: 8,    kind: 'runmax', text: (n) => `Chain an x${n} combo`,       reward: 200, tier: 'hard' },
+  { id: 'coinsW',  t: 1500, kind: 'cum',    text: (n) => `Collect ${n} coins`,         reward: 150, tier: 'med'  },
+];
+export const WEEKLY_ACTIVITY_DAYS = 3;   // play any N days this week → weekly chest
+export const WEEKLY_ACTIVITY_CHESTS = 2; // chests granted when the activity meter completes
+export const WEEKLY_ALLDONE_CHESTS = 3;  // chests for completing all 5 weekly orders
 
 /* ---------- combo milestone fireworks ----------
    Each entry: { at, label, color, payout }. When the combo counter hits `at`
@@ -215,6 +245,77 @@ export const OVERDRIVE_PER_COMBO = 0.018;
 export const FRENZY_TIME = 8;        // seconds of 2× coins + disco bloom
 export const FRENZY_COIN_MULT = 2;
 export const FRENZY_VOID_EASE = 0.55; // void rises slower during FRENZY (flow protection)
+
+/* ---------- FREE SEASON TRACK (M6) ----------
+   A rotating, 100%-free, 30-tier reward track. Seasons rotate every
+   SEASON_LEN_DAYS from a fixed UTC epoch (no server needed). Rewards are coins +
+   periodic chests — purely additive, never pay-to-win, never permanent-lockout. */
+export const SEASON_TIERS = 30;
+export const SEASON_XP_PER_TIER = 360;            // ~one tier every few runs early on
+export const SEASON_LEN_DAYS = 28;                // ~4-week season (hypercasual-friendly)
+export const SEASON_EPOCH_MS = Date.UTC(2026, 0, 5); // Mon 2026-01-05 — season S0 start
+
+/** Reward for crossing into `tier` (1..SEASON_TIERS). Coins scale up; a bonus
+ *  chest lands every 5th tier, shards every 3rd, with a chunky finale at the top. */
+export function seasonReward(tier: number): { coins: number; chest: number; shards: number } {
+  const coins = 60 + tier * 20;
+  let chest = 0;
+  let shards = 0;
+  if (tier % 5 === 0) chest = 1;
+  if (tier % 3 === 0) shards = 8;
+  if (tier >= SEASON_TIERS) { chest = 2; shards = 30; }
+  return { coins, chest, shards };
+}
+
+/** Elite Track reward for `tier` — richer than the free track. Earned by
+ *  completing the week's Weekly Orders (M8), granted retroactively on unlock. */
+export function eliteReward(tier: number): { coins: number; shards: number } {
+  return { coins: 120 + tier * 30, shards: tier % 2 === 0 ? 10 : 5 };
+}
+
+/* ---------- CAREER MILESTONES (M8) — lifetime goals, shown with partial progress ---------- */
+export interface CareerMilestone {
+  id: string;
+  label: string;
+  kind: 'height' | 'perf' | 'runs';
+  t: number;
+  coins: number;
+  shards: number;
+}
+export const CAREER_MILESTONES: CareerMilestone[] = [
+  { id: 'h10k',  label: 'Climb 10,000 m total',   kind: 'height', t: 10_000,  coins: 300,  shards: 20 },
+  { id: 'h50k',  label: 'Climb 50,000 m total',   kind: 'height', t: 50_000,  coins: 600,  shards: 40 },
+  { id: 'h100k', label: 'Climb 100,000 m total',  kind: 'height', t: 100_000, coins: 1200, shards: 80 },
+  { id: 'p500',  label: 'Land 500 perfect snaps', kind: 'perf',   t: 500,     coins: 300,  shards: 20 },
+  { id: 'p2000', label: 'Land 2,000 perfect snaps', kind: 'perf', t: 2000,    coins: 700,  shards: 50 },
+  { id: 'r100',  label: 'Play 100 runs',          kind: 'runs',   t: 100,     coins: 400,  shards: 25 },
+  { id: 'r500',  label: 'Play 500 runs',          kind: 'runs',   t: 500,     coins: 900,  shards: 60 },
+];
+
+/* ---------- ZONE MASTERY (M8) — level the zones the player engages with ---------- */
+export const MASTERY_PER_LEVEL = 25;   // perfect snaps in a zone per mastery level
+export const MASTERY_MAX_LEVEL = 10;
+/** Reward for reaching mastery `level` in any zone (coins + occasional shards). */
+export function masteryReward(level: number): { coins: number; shards: number } {
+  return { coins: 40 + level * 25, shards: level % 5 === 0 ? 12 : 0 };
+}
+
+/* ---------- WEEKLY EVENT ROTATION (M8) ----------
+   One event per week, chosen deterministically from the week key. The coin
+   multiplier is applied once at bank time (integer-clean). Real, honest windows
+   only — the event simply ends when the week rolls over. */
+export interface CoilEvent {
+  id: string;
+  name: string;
+  desc: string;
+  coinMult: number;
+}
+export const EVENTS: CoilEvent[] = [
+  { id: 'none',  name: '',               desc: '',                         coinMult: 1 },
+  { id: 'dx',    name: 'DOUBLE SPARKS',  desc: '2× coins all week',        coinMult: 2 },
+  { id: 'rush',  name: 'SPARK RUSH',     desc: '+50% coins all week',      coinMult: 1.5 },
+  { id: 'storm', name: 'SIGNAL STORM',   desc: '+25% coins · climb hard',  coinMult: 1.25 },
+];
 
 /* ---------- DAILY CHALLENGE medals (one-time daily coin rewards) ---------- */
 export const DAILY_MEDALS: DailyMedal[] = [

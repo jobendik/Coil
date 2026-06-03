@@ -99,9 +99,27 @@ function buy(tab: Tab, item: Item): void {
   else { ownSkin(item.id); equipSkin(item.id); }
   Telemetry.unlock(item.id);
   SFX.unlock();
-  // Unlock moment is a clean "reveal", not a coin party — the player just SPENT
-  // coins, so a fountain of them reads wrong. A rarity-tinted shock + a few rays
-  // + sparkles feels premium and earned.
+  unlockFX(tab, item);
+}
+
+/* Alternate ◈-shard purchase route (M8) — for earn-only (skill-gated) cosmetics,
+   shards offer a grind path so a skill-plateaued player can still collect them.
+   Never cheaper-than-skill in spirit: shards are slow premium currency. */
+function buyWithShards(tab: Tab, item: Item): void {
+  if (!item.shardPrice) return;
+  if (!Profile.spendShards(item.shardPrice)) return;
+  if (tab === 'trails') { ownTrail(item.id); equipTrail(item.id); }
+  else if (tab === 'worlds') { ownWorld(item.id); equipWorld(item.id); }
+  else if (tab === 'gear') { ownAccessory(item.id); equipAccessory(item.id); }
+  else { ownSkin(item.id); equipSkin(item.id); }
+  Telemetry.unlock(item.id);
+  SFX.unlock();
+  unlockFX(tab, item);
+}
+
+/* Shared unlock "reveal" FX — a rarity-tinted shock + rays + sparkles. Not a coin
+   fountain (the player just spent), so it reads premium and earned. */
+function unlockFX(tab: Tab, item: Item): void {
   const { W, H } = view;
   const acol = accent(tab, item);
   Shock.ring(W / 2, H * 0.42, acol, { r0: 18, r1: Math.max(W, H) * 0.7, lw: 5, life: 0.6 });
@@ -349,16 +367,20 @@ function drawGem(cx: number, cy: number, r: number, col: string): void {
   ctx.restore();
 }
 
-/* coin-balance pill, centered under the title */
+/* coin-balance pill (+ ◈ shard balance when any), centered under the title */
 function drawCoinPill(cx: number, cy: number): void {
   const { ctx } = view;
-  const label = Profile.coins.toLocaleString();
+  const coinLabel = Profile.coins.toLocaleString();
+  const hasShards = Profile.shards > 0;
+  const shardLabel = String(Profile.shards);
   ctx.save();
   ctx.font = "700 15px 'Sora', sans-serif";
-  const tw = ctx.measureText(label).width;
+  const tw = ctx.measureText(coinLabel).width;
+  const sw = hasShards ? ctx.measureText(shardLabel).width : 0;
   const pad = 16;
   const cr = 7;
-  const pw = pad + cr * 2 + 7 + tw + pad;
+  const seg = hasShards ? cr * 2 + 7 + sw + 18 : 0;   // shard segment width
+  const pw = pad + cr * 2 + 7 + tw + seg + pad;
   const ph = 30;
   const px = cx - pw / 2;
   const py = cy - ph / 2;
@@ -382,7 +404,21 @@ function drawCoinPill(cx: number, cy: number): void {
   ctx.arc(coinX - cr * 0.25, cy - cr * 0.25, cr * 0.45, 0, TAU);
   ctx.fill();
   ctx.restore();
-  text(label, coinX + cr + 7, cy, 15, '#ffe39b', 700, 0, 'left');
+  text(coinLabel, coinX + cr + 7, cy, 15, '#ffe39b', 700, 0, 'left');
+  if (hasShards) {
+    const shardX = coinX + cr + 7 + tw + 16;
+    // ◈ diamond glyph
+    ctx.save();
+    ctx.translate(shardX, cy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = '#cdb4ff';
+    ctx.shadowColor = '#a76bff';
+    ctx.shadowBlur = glowFX(6);
+    rr(-cr * 0.8, -cr * 0.8, cr * 1.6, cr * 1.6, 1.5);
+    ctx.fill();
+    ctx.restore();
+    text(shardLabel, shardX + cr + 6, cy, 15, '#cdb4ff', 700, 0, 'left');
+  }
 }
 
 export function renderShop(): void {
@@ -549,6 +585,22 @@ export function renderShop(): void {
         ctx.restore();
         text(label, pcx, chipY + 8, 9.5, can2 ? '#ffe39b' : '#7e88b5', 800, 0);
         if (can2) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buy(shopTab, item));
+      } else if (item.shardPrice) {
+        // earn-only item with a ◈-shard alternate route (M8)
+        const canS = Profile.shards >= item.shardPrice;
+        const label = 'or ◈ ' + item.shardPrice;
+        ctx.save();
+        ctx.font = "800 9.5px 'Sora', sans-serif";
+        const tw = ctx.measureText(label).width;
+        const chipW = tw + 16;
+        const chipX = pcx - chipW / 2;
+        const chipY = y + 124;
+        rr(chipX, chipY, chipW, 16, 8);
+        ctx.fillStyle = canS ? 'rgba(167,107,255,.18)' : 'rgba(255,255,255,.05)';
+        ctx.fill();
+        ctx.restore();
+        text(label, pcx, chipY + 8, 9.5, canS ? '#cdb4ff' : '#7e88b5', 800, 0);
+        if (canS) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buyWithShards(shopTab, item));
       }
     } else {
       // price chip
