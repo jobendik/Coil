@@ -1,4 +1,4 @@
-import { view } from '../core/canvas';
+import { view, topIconSize } from '../core/canvas';
 import { state, sY, fieldLeft, fieldRight } from '../game/state';
 import { skin } from '../game/skins';
 import { trail, world } from '../game/collection';
@@ -1386,22 +1386,27 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
 
 export function drawTopToggles(): void {
   const { SAFE_TOP } = view;
-  const s = 42;
+  // Shared corner-icon size (42px on ≥375-wide screens; shrinks on narrower phones
+  // so the left toggle row and the home reward cluster can't collide on a 320 px
+  // device). The inter-icon gap tracks the size.
+  const s = topIconSize();
+  const gap = Math.round(s * 0.19);
+  const step = s + gap;
   const pad = 12;
   const top = pad + SAFE_TOP;
   // SFX mute
   btn('mute', pad, top, s, s, () => setMuted(!settings.muted));
   drawIconBtn(pad, top, s, settings.muted ? 'mute' : 'sound', settings.muted ? '#5b6488' : '#2ff3e0');
   // music mute (independent of SFX)
-  const xMusic = pad + s + 8;
+  const xMusic = pad + step;
   btn('music', xMusic, top, s, s, () => setMusicMuted(!settings.musicMuted));
   drawIconBtn(xMusic, top, s, settings.musicMuted ? 'musicOff' : 'music', settings.musicMuted ? '#5b6488' : '#ffd24a');
   // QA toggle: trajectory preview on/off (the glowing gate always stays on)
-  const x2 = pad + 2 * (s + 8);
+  const x2 = pad + 2 * step;
   btn('aim', x2, top, s, s, () => setAimPreview(!settings.aimPreview));
   drawIconBtn(x2, top, s, 'aim', settings.aimPreview ? '#2ff3e0' : '#5b6488');
   // Reduced Motion toggle — comfort + accessibility (softens shake/flash/vignette)
-  const x3 = pad + 3 * (s + 8);
+  const x3 = pad + 3 * step;
   btn('motion', x3, top, s, s, () => setReducedMotion(!settings.reducedMotion));
   drawIconBtn(x3, top, s, settings.reducedMotion ? 'motionOff' : 'motion',
     settings.reducedMotion ? '#5b6488' : '#a76bff');
@@ -1409,12 +1414,12 @@ export function drawTopToggles(): void {
   // They live on a SECOND row at the left so they never collide with the centred
   // height HUD in-play, nor with the top-right reward cluster on home.
   if (state.scene === 'home') {
-    const row2 = top + s + 8;
+    const row2 = top + step;
     btn('cbgate', pad, row2, s, s, () => setCbGate(!settings.cbGate));
     drawIconBtn(pad, row2, s, 'cb', settings.cbGate ? '#9be35a' : '#5b6488');
     // Echo ghost toggle — the doc requires an opt-out for players who find the
     // racing ghost distracting (M5).
-    const ex = pad + (s + 8);
+    const ex = pad + step;
     btn('echo', ex, row2, s, s, () => setEchoVisible(!settings.echoVisible));
     drawIconBtn(ex, row2, s, settings.echoVisible ? 'echo' : 'echoOff',
       settings.echoVisible ? '#2ff3e0' : '#5b6488');

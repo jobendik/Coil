@@ -127,15 +127,15 @@ function drawPanel(): { x: number; y: number; w: number; h: number } {
 }
 
 function actionButton(key: string, x: number, y: number, w: number, h: number, label: string, col: string, dark: string, act: () => void, enabled = true): void {
-  const { ctx } = view;
-  rr(x, y, w, h, 14);
+  const { ctx, S } = view;
+  rr(x, y, w, h, 14 * S);
   if (enabled) {
     ctx.fillStyle = col;
     ctx.shadowColor = col;
     ctx.shadowBlur = 20;
     ctx.fill();
     ctx.shadowBlur = 0;
-    text(label, x + w / 2, y + h / 2, 17, dark, 800, 0, 'center', "'Unbounded'");
+    text(label, x + w / 2, y + h / 2, 17 * S, dark, 800, 0, 'center', "'Unbounded'");
     btn(key, x, y, w, h, act);
   } else {
     ctx.fillStyle = 'rgba(20,16,48,.85)';
@@ -143,7 +143,7 @@ function actionButton(key: string, x: number, y: number, w: number, h: number, l
     ctx.strokeStyle = 'rgba(255,255,255,.14)';
     ctx.lineWidth = 1.4;
     ctx.stroke();
-    text(label, x + w / 2, y + h / 2, 14, '#7e88b5', 800, 0, 'center', "'Unbounded'");
+    text(label, x + w / 2, y + h / 2, 14 * S, '#7e88b5', 800, 0, 'center', "'Unbounded'");
   }
 }
 
@@ -156,62 +156,62 @@ function absorber(): void {
 
 /* ----------------------------------- LOGIN ----------------------------------- */
 function drawLogin(): void {
-  const { ctx, W } = view;
+  const { ctx, W, S } = view;
   const p = drawPanel();
   const cx = W / 2;
-  text('DAILY BONUS', cx, p.y + 34, 22, '#ffe39b', 800, 12, 'center', "'Unbounded'");
+  text('DAILY BONUS', cx, p.y + 34 * S, 22 * S, '#ffe39b', 800, 12, 'center', "'Unbounded'");
   const pend = Login.pendingDay();
   text(ov.loginDone ? 'See you tomorrow!' : 'Day ' + pend + '  ·  come back daily for more',
-    cx, p.y + 60, 11, '#9fb0e0', 700, 0);
+    cx, p.y + 60 * S, 11 * S, '#9fb0e0', 700, 0);
 
   // 7-day calendar strip
   const cells = LOGIN_REWARDS.length;
   const gap = 7;
-  const stripW = p.w - 40;
+  const stripW = p.w - 40 * S;
   const cw = (stripW - gap * (cells - 1)) / cells;
-  const cy = p.y + 90;
-  const chh = 56;
+  const cy = p.y + 90 * S;
+  const chh = 56 * S;
   for (let i = 0; i < cells; i++) {
     const day = i + 1;
-    const x = p.x + 20 + i * (cw + gap);
+    const x = p.x + 20 * S + i * (cw + gap);
     const claimed = day < pend || (ov.loginDone && day <= ov.loginDay);
     const isToday = day === pend && !ov.loginDone;
-    rr(x, cy, cw, chh, 10);
+    rr(x, cy, cw, chh, 10 * S);
     ctx.fillStyle = isToday ? hexA('#ffd24a', 0.18) : claimed ? 'rgba(149,227,90,.12)' : 'rgba(255,255,255,.05)';
     ctx.fill();
-    rr(x, cy, cw, chh, 10);
+    rr(x, cy, cw, chh, 10 * S);
     ctx.lineWidth = isToday ? 2 : 1;
     ctx.strokeStyle = isToday ? '#ffd24a' : claimed ? 'rgba(149,227,90,.4)' : 'rgba(255,255,255,.08)';
     if (isToday) { ctx.shadowColor = '#ffd24a'; ctx.shadowBlur = glowFX(10); }
     ctx.stroke();
     ctx.shadowBlur = 0;
-    text('D' + day, x + cw / 2, cy + 14, 9, claimed ? '#9be35a' : isToday ? '#ffd24a' : '#8a93bf', 800, 0);
+    text('D' + day, x + cw / 2, cy + chh * 0.25, 9 * S, claimed ? '#9be35a' : isToday ? '#ffd24a' : '#8a93bf', 800, 0);
     if (claimed) {
       ctx.strokeStyle = '#9be35a';
       ctx.lineWidth = 2;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(x + cw / 2 - 5, cy + 34); ctx.lineTo(x + cw / 2 - 1, cy + 38); ctx.lineTo(x + cw / 2 + 6, cy + 30);
+      ctx.moveTo(x + cw / 2 - 5 * S, cy + chh * 0.61); ctx.lineTo(x + cw / 2 - 1 * S, cy + chh * 0.68); ctx.lineTo(x + cw / 2 + 6 * S, cy + chh * 0.54);
       ctx.stroke();
     } else {
-      text('◎' + LOGIN_REWARDS[i], x + cw / 2, cy + 36, 10, isToday ? '#ffe39b' : '#9fb0e0', 800, 0);
+      text('◎' + LOGIN_REWARDS[i], x + cw / 2, cy + chh * 0.64, 10 * S, isToday ? '#ffe39b' : '#9fb0e0', 800, 0);
     }
   }
 
   // reward headline
   if (ov.loginDone) {
-    text('+' + ov.loginReward + ' ◎', cx, cy + chh + 44, 30, '#ffd24a', 800, 14, 'center', "'Unbounded'");
+    text('+' + ov.loginReward + ' ◎', cx, cy + chh + 44 * S, 30 * S, '#ffd24a', 800, 14, 'center', "'Unbounded'");
   } else {
-    text('TODAY: +' + Login.rewardFor(pend) + ' ◎', cx, cy + chh + 44, 22, '#ffe39b', 800, 10, 'center', "'Unbounded'");
+    text('TODAY: +' + Login.rewardFor(pend) + ' ◎', cx, cy + chh + 44 * S, 22 * S, '#ffe39b', 800, 10, 'center', "'Unbounded'");
   }
 
   const bw = p.w * 0.6;
   const bx = cx - bw / 2;
-  const by = p.y + p.h - 70;
+  const by = p.y + p.h - 70 * S;
   if (ov.loginDone) {
-    actionButton('loginok', bx, by, bw, 50, 'CONTINUE', '#9be35a', '#04130a', () => closeOverlay());
+    actionButton('loginok', bx, by, bw, 50 * S, 'CONTINUE', '#9be35a', '#04130a', () => closeOverlay());
   } else {
-    actionButton('loginclaim', bx, by, bw, 50, 'CLAIM', '#ffd24a', '#3a2400', () => {
+    actionButton('loginclaim', bx, by, bw, 50 * S, 'CLAIM', '#ffd24a', '#3a2400', () => {
       const r = Login.claim();
       ov.loginDone = true;
       ov.loginReward = r.reward;
@@ -234,16 +234,18 @@ function posMod(a: number, m: number): number {
 }
 
 function drawWheel(dt: number): void {
-  const { ctx, W, H } = view;
+  const { ctx, W, H, S } = view;
   const p = drawPanel();
   const cx = W / 2;
-  text('DAILY SPIN', cx, p.y + 34, 22, '#cdb4ff', 800, 12, 'center', "'Unbounded'");
+  text('DAILY SPIN', cx, p.y + 34 * S, 22 * S, '#cdb4ff', 800, 12, 'center', "'Unbounded'");
 
   const segs = WHEEL_SEGMENTS;
   const n = segs.length;
   const seg = TAU / n;
-  const R = Math.min(p.w * 0.36, 128);
-  const wy = p.y + 60 + R;
+  // Radius is capped to the panel HEIGHT too, so on a short modal the wheel never
+  // grows into the SPIN button beneath it.
+  const R = Math.min(p.w * 0.36, 128, p.h * 0.32);
+  const wy = p.y + 56 * S + R;
 
   // advance spin animation
   if (ov.spinning) {
@@ -316,26 +318,26 @@ function drawWheel(dt: number): void {
 
   const bw = p.w * 0.6;
   const bx = cx - bw / 2;
-  const by = p.y + p.h - 70;
+  const by = p.y + p.h - 70 * S;
   if (ov.spun && !ov.spinning) {
-    if (ov.wheelCoins > 0) text('+' + ov.wheelCoins + ' ◎', cx, by - 30, 22, '#ffd24a', 800, 10, 'center', "'Unbounded'");
+    if (ov.wheelCoins > 0) text('+' + ov.wheelCoins + ' ◎', cx, by - 30 * S, 22 * S, '#ffd24a', 800, 10, 'center', "'Unbounded'");
     else text(Wheel.bonusAvailable() ? 'Free spin used — one bonus spin left' : 'Come back tomorrow for a free spin',
-      cx, by - 28, 12, '#9fb0e0', 700, 0);
+      cx, by - 28 * S, 12 * S, '#9fb0e0', 700, 0);
     if (Wheel.bonusAvailable()) {
       // opt-in rewarded extra spin (once/day) alongside CONTINUE
       const fullW = p.w * 0.82;
       const fbx = cx - fullW / 2;
       const half = (fullW - 10) / 2;
-      actionButton('wheelbonus', fbx, by, half, 50, adVerb() + ' +1', '#ffd24a', '#3a2400',
+      actionButton('wheelbonus', fbx, by, half, 50 * S, adVerb() + ' +1', '#ffd24a', '#3a2400',
         () => rewarded(() => { const r = Wheel.spinBonus(); startSpinAnim(r.idx, r.coins); }));
-      actionButton('wheelok', fbx + half + 10, by, half, 50, 'CONTINUE', '#cdb4ff', '#1a1140', () => closeOverlay());
+      actionButton('wheelok', fbx + half + 10, by, half, 50 * S, 'CONTINUE', '#cdb4ff', '#1a1140', () => closeOverlay());
     } else {
-      actionButton('wheelok', bx, by, bw, 50, 'CONTINUE', '#cdb4ff', '#1a1140', () => closeOverlay());
+      actionButton('wheelok', bx, by, bw, 50 * S, 'CONTINUE', '#cdb4ff', '#1a1140', () => closeOverlay());
     }
   } else if (ov.spinning) {
-    actionButton('wheelspin', bx, by, bw, 50, 'SPINNING…', '#cdb4ff', '#1a1140', () => { /* busy */ }, false);
+    actionButton('wheelspin', bx, by, bw, 50 * S, 'SPINNING…', '#cdb4ff', '#1a1140', () => { /* busy */ }, false);
   } else {
-    actionButton('wheelspin', bx, by, bw, 50, 'SPIN', '#ffd24a', '#3a2400', () => {
+    actionButton('wheelspin', bx, by, bw, 50 * S, 'SPIN', '#ffd24a', '#3a2400', () => {
       const res = Wheel.spin();
       startSpinAnim(res.idx, res.coins);
     });
@@ -361,13 +363,13 @@ function startSpinAnim(idx: number, coins: number): void {
 
 /* ----------------------------------- CHEST ----------------------------------- */
 function drawChest(dt: number): void {
-  const { ctx, W, H } = view;
+  const { ctx, W, H, S } = view;
   const p = drawPanel();
   const cx = W / 2;
-  text('BONUS CHEST', cx, p.y + 34, 22, '#ffd24a', 800, 12, 'center', "'Unbounded'");
-  text(Chest.count + ' chest' + (Chest.count === 1 ? '' : 's') + ' ready', cx, p.y + 60, 11, '#9fb0e0', 700, 0);
+  text('BONUS CHEST', cx, p.y + 34 * S, 22 * S, '#ffd24a', 800, 12, 'center', "'Unbounded'");
+  text(Chest.count + ' chest' + (Chest.count === 1 ? '' : 's') + ' ready', cx, p.y + 60 * S, 11 * S, '#9fb0e0', 700, 0);
 
-  const chy = p.y + 150;
+  const chy = p.y + p.h * 0.42;
   const lift = ov.opening ? Math.min(1, ov.openT / 0.4) : (ov.opened ? 1 : 0);
   if (ov.opening) {
     ov.openT += dt;
@@ -387,11 +389,11 @@ function drawChest(dt: number): void {
   }
 
   // chest drawing
-  const bw0 = 96;
-  const bh0 = 64;
+  const bw0 = 96 * S;
+  const bh0 = 64 * S;
   ctx.save();
   // body
-  rr(cx - bw0 / 2, chy - bh0 / 2, bw0, bh0, 8);
+  rr(cx - bw0 / 2, chy - bh0 / 2, bw0, bh0, 8 * S);
   ctx.fillStyle = '#7a4a18';
   ctx.fill();
   ctx.strokeStyle = '#ffd24a';
@@ -404,7 +406,7 @@ function drawChest(dt: number): void {
   ctx.save();
   ctx.translate(cx - bw0 / 2, chy - bh0 / 2);
   ctx.rotate(-lift * 0.5);
-  rr(0, -16, bw0, 20, 8);
+  rr(0, -16 * S, bw0, 20 * S, 8 * S);
   ctx.fillStyle = '#9a6024';
   ctx.fill();
   ctx.strokeStyle = '#ffd24a';
@@ -414,23 +416,23 @@ function drawChest(dt: number): void {
   // lock
   if (!opened()) {
     ctx.fillStyle = '#ffd24a';
-    rr(cx - 6, chy - 6, 12, 14, 3);
+    rr(cx - 6 * S, chy - 6 * S, 12 * S, 14 * S, 3 * S);
     ctx.fill();
   } else {
     // inner glow
     ctx.fillStyle = hexA('#fff3b0', 0.5 + Math.sin(ov.t * 6) * 0.2);
     ctx.beginPath();
-    ctx.arc(cx, chy - 6, 10, 0, TAU);
+    ctx.arc(cx, chy - 6 * S, 10 * S, 0, TAU);
     ctx.fill();
   }
   ctx.restore();
 
   const bw = p.w * 0.6;
   const bx = cx - bw / 2;
-  const by = p.y + p.h - 70;
+  const by = p.y + p.h - 70 * S;
   if (ov.opened) {
     text('+' + ov.chestCoins + ' ◎' + (ov.chestShards > 0 ? '   +' + ov.chestShards + ' ◈' : ''),
-      cx, by - 30, 22, '#ffd24a', 800, 12, 'center', "'Unbounded'");
+      cx, by - 30 * S, 22 * S, '#ffd24a', 800, 12, 'center', "'Unbounded'");
     const hasNext = Chest.count > 0;
     const nextLabel = hasNext ? 'OPEN NEXT (' + Chest.count + ')' : 'CONTINUE';
     const nextCol = hasNext ? '#ffd24a' : '#9be35a';
@@ -441,7 +443,7 @@ function drawChest(dt: number): void {
       const fullW = p.w * 0.82;
       const fbx = cx - fullW / 2;
       const half = (fullW - 10) / 2;
-      actionButton('chest2x', fbx, by, half, 50, adVerb() + ' 2×', '#ff9b50', '#3a1400', () => rewarded(() => {
+      actionButton('chest2x', fbx, by, half, 50 * S, adVerb() + ' 2×', '#ff9b50', '#3a1400', () => rewarded(() => {
         Profile.addCoins(ov.chestCoins);
         ov.chestCoins *= 2;
         ov.chestDoubled = true;
@@ -452,17 +454,17 @@ function drawChest(dt: number): void {
         const b = bankXY();
         FlyCoins.send(cx, view.H * 0.5, 12, b.x, b.y);
       }));
-      actionButton('chestnext', fbx + half + 10, by, half, 50, nextLabel, nextCol, nextDark, nextAct);
+      actionButton('chestnext', fbx + half + 10, by, half, 50 * S, nextLabel, nextCol, nextDark, nextAct);
     } else {
-      actionButton('chestnext', bx, by, bw, 50, nextLabel, nextCol, nextDark, nextAct);
+      actionButton('chestnext', bx, by, bw, 50 * S, nextLabel, nextCol, nextDark, nextAct);
     }
   } else if (ov.opening) {
-    actionButton('chestbusy', bx, by, bw, 50, 'OPENING…', '#ffd24a', '#3a2400', () => { /* busy */ }, false);
+    actionButton('chestbusy', bx, by, bw, 50 * S, 'OPENING…', '#ffd24a', '#3a2400', () => { /* busy */ }, false);
   } else if (Chest.count > 0) {
-    actionButton('chestopen', bx, by, bw, 50, 'OPEN', '#ffd24a', '#3a2400', () => startOpen());
+    actionButton('chestopen', bx, by, bw, 50 * S, 'OPEN', '#ffd24a', '#3a2400', () => startOpen());
   } else {
-    text('Complete all daily missions to earn a chest', cx, by - 26, 11, '#9fb0e0', 700, 0);
-    actionButton('chestok', bx, by, bw, 50, 'CONTINUE', '#cdb4ff', '#1a1140', () => closeOverlay());
+    text('Complete all daily missions to earn a chest', cx, by - 26 * S, 11 * S, '#9fb0e0', 700, 0);
+    actionButton('chestok', bx, by, bw, 50 * S, 'CONTINUE', '#cdb4ff', '#1a1140', () => closeOverlay());
   }
   absorber();
 }
@@ -486,12 +488,13 @@ function startOpen(): void {
 
 /* ----------------------------------- WEEKLY ORDERS ----------------------------------- */
 function drawWeekly(): void {
-  const { ctx, W, H } = view;
+  const { ctx, W, H, S } = view;
   // A taller dedicated panel (5 orders + activity meter need more room than the
-  // shared reward panel gives).
+  // shared reward panel gives). Height is also bounded to the usable viewport so
+  // it never spills past the safe area on a short screen.
   const w = Math.min(W * 0.9, 460);
-  const h = Math.min(H * 0.84, 580);
-  const p = { x: W / 2 - w / 2, y: H / 2 - h / 2, w, h };
+  const h = Math.min(H * 0.84, 580, H - view.SAFE_TOP - view.SAFE_BOTTOM - 16);
+  const p = { x: W / 2 - w / 2, y: (H - h) / 2, w, h };
   rr(p.x, p.y, p.w, p.h, 20);
   const g = ctx.createLinearGradient(p.x, p.y, p.x, p.y + p.h);
   g.addColorStop(0, 'rgba(32,26,64,.98)');
@@ -504,47 +507,47 @@ function drawWeekly(): void {
   ctx.stroke();
 
   const cx = W / 2;
-  text('WEEKLY ORDERS', cx, p.y + 32, 21, '#9be35a', 800, 12, 'center', "'Unbounded'");
-  text('Climb any ' + WEEKLY_ACTIVITY_DAYS + ' days this week · streak-friendly', cx, p.y + 56, 10.5, '#9fb0e0', 700, 0);
+  text('WEEKLY ORDERS', cx, p.y + 32 * S, 21 * S, '#9be35a', 800, 12, 'center', "'Unbounded'");
+  text('Climb any ' + WEEKLY_ACTIVITY_DAYS + ' days this week · streak-friendly', cx, p.y + 56 * S, 10.5 * S, '#9fb0e0', 700, 0);
 
   // activity dots
   const days = Weekly.activityDays();
   const dotN = WEEKLY_ACTIVITY_DAYS;
-  const dotGap = 26;
-  const dotY = p.y + 86;
+  const dotGap = 26 * S;
+  const dotY = p.y + 86 * S;
   const dotX0 = cx - ((dotN - 1) * dotGap) / 2;
   for (let i = 0; i < dotN; i++) {
     const on = i < days;
     ctx.beginPath();
-    ctx.arc(dotX0 + i * dotGap, dotY, 7, 0, TAU);
+    ctx.arc(dotX0 + i * dotGap, dotY, 7 * S, 0, TAU);
     ctx.fillStyle = on ? '#9be35a' : 'rgba(255,255,255,.12)';
     if (on) { ctx.shadowColor = '#9be35a'; ctx.shadowBlur = glowFX(8); }
     ctx.fill();
     ctx.shadowBlur = 0;
   }
   text(Weekly.d.chestClaimed ? 'Activity chest earned ✓' : days + '/' + dotN + ' days · ' + (dotN - days) + ' to a chest',
-    cx, dotY + 22, 10, Weekly.d.chestClaimed ? '#9be35a' : '#ffe39b', 700, 0);
+    cx, dotY + 22 * S, 10 * S, Weekly.d.chestClaimed ? '#9be35a' : '#ffe39b', 700, 0);
 
   // 5 order rows
   const ms = Weekly.missions();
-  const listTop = p.y + 128;
-  const listBot = p.y + p.h - 96;
+  const listTop = p.y + 128 * S;
+  const listBot = p.y + p.h - 96 * S;
   const rowH = (listBot - listTop) / ms.length;
-  const lx = p.x + 26;
-  const lw = p.w - 52;
+  const lx = p.x + 26 * S;
+  const lw = p.w - 52 * S;
   for (let i = 0; i < ms.length; i++) {
     const m = ms[i];
     const go = Weekly.goalFor(m);
     const y = listTop + i * rowH + rowH / 2;
     const pct = clamp(m.prog / go.t, 0, 1);
     const c = m.done ? '#9be35a' : '#2ff3e0';
-    text((m.done ? '✓ ' : '') + go.text(go.t), lx, y - 7, 11.5, m.done ? '#9be35a' : '#dfe7ff', 600, 0, 'left');
+    text((m.done ? '✓ ' : '') + go.text(go.t), lx, y - 7 * S, 11.5 * S, m.done ? '#9be35a' : '#dfe7ff', 600, 0, 'left');
     text(m.done ? '+' + go.reward + ' ◎' : Math.min(m.prog, go.t) + '/' + go.t,
-      lx + lw, y - 7, 10.5, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
-    rr(lx, y + 6, lw, 5, 3);
+      lx + lw, y - 7 * S, 10.5 * S, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
+    rr(lx, y + 6 * S, lw, 5 * S, 3 * S);
     ctx.fillStyle = 'rgba(255,255,255,.07)';
     ctx.fill();
-    rr(lx, y + 6, lw * pct, 5, 3);
+    rr(lx, y + 6 * S, lw * pct, 5 * S, 3 * S);
     ctx.fillStyle = c;
     if (!m.done) { ctx.shadowColor = c; ctx.shadowBlur = glowFX(5); }
     ctx.fill();
@@ -552,15 +555,15 @@ function drawWeekly(): void {
   }
 
   // Elite Track status — the honest "earned premium track" (M8).
-  const eliteY = p.y + p.h - 78;
+  const eliteY = p.y + p.h - 78 * S;
   if (Season.d.eliteUnlocked) {
-    text('★ ELITE TRACK UNLOCKED — claim it in SEASON', cx, eliteY, 11, '#ffd24a', 800, 8);
+    text('★ ELITE TRACK UNLOCKED — claim it in SEASON', cx, eliteY, 11 * S, '#ffd24a', 800, 8);
   } else {
-    text('Complete all 5 to unlock the season ELITE TRACK', cx, eliteY, 10.5, '#cdb4ff', 700, 0);
+    text('Complete all 5 to unlock the season ELITE TRACK', cx, eliteY, 10.5 * S, '#cdb4ff', 700, 0);
   }
 
   const bw = p.w * 0.6;
-  actionButton('weeklyok', cx - bw / 2, p.y + p.h - 62, bw, 48, 'CONTINUE', '#9be35a', '#04130a', () => closeOverlay());
+  actionButton('weeklyok', cx - bw / 2, p.y + p.h - 62 * S, bw, 48 * S, 'CONTINUE', '#9be35a', '#04130a', () => closeOverlay());
   absorber();
 }
 
