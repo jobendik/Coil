@@ -387,14 +387,14 @@ document.addEventListener('visibilitychange', () => {
   paused = document.hidden;
   if (paused) {
     Music.pause();
-    // Tabbing away mid-run pauses gameplay — tell CrazyGames so its ad/engagement
-    // timing stays accurate (no-op off-platform, and only while actually playing).
-    if (state.scene === 'play') CG.gameplayStop();
   } else {
     last = performance.now();
     acc = 0;          // Music resumes via its per-frame fade
-    if (state.scene === 'play') CG.gameplayStart();
   }
+  // NB: deliberately NOT calling CG.gameplayStop()/gameplayStart() here. CrazyGames
+  // tracks tab focus itself, and its SDK guidance is explicit: send gameplayStop
+  // only on real in-game breaks (menu / pause / level-end), NEVER on focus loss or
+  // the player leaving the game area. We still pause the loop + music locally.
 });
 
 window.addEventListener('load', () => {

@@ -52,6 +52,10 @@ type Hook = (paused: boolean) => void;
 
 const cgw = window as unknown as CGWindow;
 
+// Minimum gap between happytime signals — keeps the celebration "special" and
+// collapses same-frame bursts into one (see CGState.happy).
+const HAPPY_COOLDOWN_MS = 30000;
+
 class CGState {
   ready = false;
   sdk: CGSdk | null = null;
@@ -142,7 +146,16 @@ class CGState {
     try { this.sdk?.game.gameplayStop(); } catch { /* no-op */ }
   }
 
+  // happytime marks a celebratory beat for the platform. CrazyGames asks that it
+  // stay rare ("use sparingly, the celebration should remain a special moment"),
+  // but the game fires it from several gameplay moments that can recur — and even
+  // burst in a single frame (e.g. crossing multiple vault tiers at once). Collapse
+  // bursts and cap the rate so the SDK only ever sees a genuinely spaced-out signal.
+  private lastHappy = -Infinity;
   happy(): void {
+    const now = performance.now();
+    if (now - this.lastHappy < HAPPY_COOLDOWN_MS) return;
+    this.lastHappy = now;
     try { this.sdk?.game.happytime(); } catch { /* no-op */ }
   }
 
