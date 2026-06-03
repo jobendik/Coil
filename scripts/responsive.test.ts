@@ -46,6 +46,11 @@ const DEVICES: Dev[] = [
   { name: 'iPhone XR/11 414×896',              w: 414, h: 896, st: 54, sb: 34 },
   { name: 'tablet column 540×1024',            w: 540, h: 1024, st: 6, sb: 0 },
   { name: 'tablet landscape-ish 540×720',      w: 540, h: 720, st: 6, sb: 0 },
+  // Very tall / narrow (desktop fullscreen capped at the 540 frame width): the
+  // result block must stay a tidy CENTRED card here, not a sparse top-to-bottom
+  // stretch with a lone bar floating in the middle.
+  { name: 'desktop fullscreen 540×1196',       w: 540, h: 1196, st: 6, sb: 0 },
+  { name: 'desktop fullscreen tall 540×1500',  w: 540, h: 1500, st: 6, sb: 0 },
 ];
 
 function applyDevice(d: Dev): void {
@@ -141,8 +146,23 @@ for (const d of DEVICES) {
   for (const c of RCASES) testResult(d, c);
 }
 
+// Non-stretch invariant: on a tall viewport the result block must stay a fixed-size
+// CENTRED card — its height can't grow with viewport height (that's the sparse
+// "lone bar floating in a huge gap" regression); it just recentres lower.
+{
+  const c = { nBars: 1, nExtra: 1, hasTopCTA: true, hasHighlight: false, fast: true };
+  applyDevice({ name: '', w: 540, h: 1196, st: 6, sb: 0 });
+  const a = resultLayout(c);
+  const hA = a.tapHintY - a.headerY;
+  applyDevice({ name: '', w: 540, h: 1600, st: 6, sb: 0 });
+  const b = resultLayout(c);
+  const hB = b.tapHintY - b.headerY;
+  check(Math.abs(hA - hB) < 1, `result block is a fixed-size card across tall viewports (${hA.toFixed(0)} vs ${hB.toFixed(0)}px), not a stretch`);
+  check(b.headerY > a.headerY + 100, 'result block recentres lower on a taller viewport (not top-pinned with a mid-screen gap)');
+}
+
 if (failures === 0) {
-  console.log(`responsive: ✓ home + result layouts fit & never overlap across ${DEVICES.length} viewports (320×460 → 540×1024)`);
+  console.log(`responsive: ✓ home + result layouts fit, never overlap & stay compact across ${DEVICES.length} viewports (320×460 → 540×1500)`);
 } else {
   console.error(`  ${failures} responsive layout failures`);
   process.exit(1);

@@ -637,70 +637,84 @@ export interface ResultLayout {
 
 /* SINGLE SOURCE OF TRUTH for the game-over screen's vertical layout.
 
-   The original bug was two INDEPENDENT coordinate systems: the progress bars grew
-   downward in fixed 46px steps from a viewport fraction (H*0.36), while the CTA
-   buttons were pinned to their own fractions (H*0.635…). On short screens the bar
-   stack ran straight into the CTAs, and the bottom nav ran into "TAP TO PLAY
-   AGAIN".
-
-   Here a top cluster (header / height / stats / highlight) keeps its proportional
-   anchors with scaled type, the action cluster (next-action → optional CTA →
-   PLAY AGAIN → ASCENT/SHOP/MENU) is anchored UP from the bottom safe edge, and the
-   bars + status lines are laid out in the gap BETWEEN them — compressing their row
-   pitch if the gap is tight so they can never overlap the action cluster. Pure +
-   exported for the responsive layout test. */
+   The whole screen is ONE compact top-to-bottom flow — header / height / stats /
+   (highlight) / progress bars / status lines / next-action / (CTA) / PLAY AGAIN /
+   ASCENT·SHOP·MENU / tap hint — and the assembled block is then CENTRED in the
+   safe-area band. That keeps it tight and card-like on tall viewports (desktop
+   fullscreen, where the previous top-anchored-header + bottom-anchored-actions
+   split left big empty gaps with a lone bar floating in the middle), while on
+   short screens it compresses the bar/status pitch to fit instead of overlapping.
+   The earlier bug this descends from was two INDEPENDENT coordinate systems (fixed
+   46px bars from H*0.36 vs CTAs pinned to H*0.635) that collided on short screens.
+   Pure + exported for the responsive layout test. */
 export function resultLayout(o: {
   nBars: number; nExtra: number; hasTopCTA: boolean; hasHighlight: boolean; fast: boolean;
 }): ResultLayout {
-  const { W, H, SAFE_BOTTOM, S } = view;
+  const { W, H, SAFE_TOP, SAFE_BOTTOM, S } = view;
   const cx = W / 2;
-  const bottom = H - SAFE_BOTTOM;
   const pw = W * 0.62;
   const px = cx - pw / 2;
+  const top = SAFE_TOP;
+  const avail = H - SAFE_TOP - SAFE_BOTTOM;
 
-  // top cluster — proportional anchors (spreads on tall screens as before), scaled
-  // type; the highlight sits a fixed scaled gap UNDER the stat labels so it can't
-  // ride into them on short screens (the old "DAILY RUNNER overlaps stats" bug).
-  const headerY = H * 0.13;
-  const heightY = H * 0.21;
-  const statY = H * 0.28;
-  const highlightY = statY + 42 * S;
-  const topEnd = (o.hasHighlight ? highlightY : statY + 22 * S) + 14 * S;
-
-  // action cluster — anchored UP from the bottom safe edge.
-  const tapHintY = bottom - 16 * S;
-  const rowH = 46 * S;
-  const bottomRowY = tapHintY - 16 * S - rowH;
+  // Vertical space each section reserves (scaled).
+  const HEADER = 44 * S;
+  const HEIGHT = 56 * S;
+  const STATS = 48 * S;
+  const HL = o.hasHighlight ? 26 * S : 0;
+  const PRE_BARS = 14 * S;
+  const PRE_ACTION = 16 * S;
+  const NEXT = 26 * S;
+  const ctaH = o.hasTopCTA ? 54 * S : 0;
+  const ctaGap = o.hasTopCTA ? 10 * S : 0;
   const replayH = (o.hasTopCTA ? 48 : 58) * S;
-  const replayY = bottomRowY - 12 * S - replayH;
-  let cta: ResultLayout['cta'] = null;
-  let clusterTop = replayY;
-  if (o.hasTopCTA) {
-    const ch = 54 * S;
-    const cy = replayY - 9 * S - ch;
-    cta = { x: px, y: cy, w: pw, h: ch };
-    clusterTop = cy;
-  }
-  const nextActionY = clusterTop - 16 * S;
+  const replayGap = 12 * S;
+  const ROW = 46 * S;
+  const PRE_TAP = 10 * S;
+  const TAP = 18 * S;
 
-  // bar region between the two clusters; compress the per-row pitch if the gap is
-  // tight so the bars + status lines always fit (never overlapping the cluster).
-  const regionTop = topEnd + 8 * S;
-  const regionBot = nextActionY - 12 * S;
-  const avail = Math.max(0, regionBot - regionTop);
+  const fixed = HEADER + HEIGHT + STATS + HL + PRE_BARS + PRE_ACTION + NEXT
+    + ctaH + ctaGap + replayH + replayGap + ROW + PRE_TAP + TAP;
   const barNat = 46 * S;
   const extraNat = 22 * S;
-  const need = o.nBars * barNat + o.nExtra * extraNat;
-  const f = need > avail && need > 0 ? avail / need : 1;
-  const barStep = barNat * f;
-  const extraStep = extraNat * f;
-  const content = o.nBars * barStep + o.nExtra * extraStep;
-  // bias content slightly down when there's slack so a lone fast-path bar reads as
-  // the focal hook rather than glued under the stat row (mirrors the old H*0.42).
-  const topPad = Math.max(0, avail - content) * (o.fast ? 0.4 : 0.16);
-  const cursor = regionTop + topPad;
-  const barTop = cursor + barStep * 0.36;             // first bar's label baseline
-  const extraTop = cursor + o.nBars * barStep + extraStep * 0.5;
+  const barsNat = o.nBars * barNat + o.nExtra * extraNat;
+  const total = fixed + barsNat;
+
+  // Fit: compress the bar/status pitch (to a floor) when the natural block is taller
+  // than the band; otherwise centre the block (a touch above middle) so tall screens
+  // read as a tidy card rather than a sparse stretch.
+  let barStep = barNat;
+  let extraStep = extraNat;
+  let startY: number;
+  if (total <= avail) {
+    startY = top + (avail - total) * 0.44;
+  } else {
+    const floor = o.nBars * 30 * S + o.nExtra * 15 * S;
+    const room = Math.max(0, barsNat - floor);
+    const f = barsNat > 0 ? Math.max(0, barsNat - Math.min(total - avail, room)) / barsNat : 1;
+    barStep = barNat * f;
+    extraStep = extraNat * f;
+    startY = top;
+  }
+
+  let c = startY;
+  const headerY = c + HEADER / 2; c += HEADER;
+  const heightY = c + HEIGHT / 2; c += HEIGHT;
+  const statY = c + 16 * S; c += STATS;          // stat value baseline; label drawn at +22S
+  const highlightY = o.hasHighlight ? c + 11 * S : c;
+  if (o.hasHighlight) c += HL;
+  c += PRE_BARS;
+  const barTop = c + barStep * 0.36;             // first bar's label baseline
+  c += o.nBars * barStep;
+  const extraTop = c + extraStep * 0.5;
+  c += o.nExtra * extraStep;
+  c += PRE_ACTION;
+  const nextActionY = c + 12 * S; c += NEXT;
+  let cta: ResultLayout['cta'] = null;
+  if (o.hasTopCTA) { cta = { x: px, y: c, w: pw, h: ctaH }; c += ctaH + ctaGap; }
+  const replayY = c; c += replayH + replayGap;
+  const bottomRowY = c; c += ROW + PRE_TAP;
+  const tapHintY = c + 9 * S;
 
   return {
     S, headerY, heightY, statY, highlightY,
@@ -709,7 +723,7 @@ export function resultLayout(o: {
     nextActionY,
     cta,
     replay: { x: px, y: replayY, w: pw, h: replayH },
-    bottomRow: { x: px, y: bottomRowY, third: (pw - 9 * S * 2) / 3, gap: 9 * S, h: rowH },
+    bottomRow: { x: px, y: bottomRowY, third: (pw - 9 * S * 2) / 3, gap: 9 * S, h: ROW },
     tapHintY,
   };
 }
