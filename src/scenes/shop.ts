@@ -566,50 +566,45 @@ export function renderShop(): void {
     } else if (item.req) {
       // SKILL ROUTE — show the requirement + progress bar. If the item ALSO has a
       // price it's DUAL-ROUTE: reach the req for free, or buy with coins (a small
-      // "or ◎N" chip, tappable when affordable). Price-0 items stay earn-only.
+      // "or ◎N" chip, tappable when affordable). A shardPrice gives an earn-only
+      // item a ◈-grind fallback instead (M8). Either alternate route adds a chip at
+      // the card foot, so we drop the textual progress readout in that case — the
+      // bar already conveys it and the extra row would collide with the rarity label
+      // drawn just above (the bug that stacked "LEGENDARY" over "REACH 500 M").
       const frac = reqFraction(item.req);
       const dual = item.price > 0;
-      text(reqLabel(item.req), pcx, y + (dual ? 103 : 110), 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
-      text(reqProgress(item.req), pcx, y + (dual ? 115 : 123), 8.5, '#8a93bf', 700, 0);
+      const hasChip = dual || !!item.shardPrice;
+      // reqLabel sits clear below the rarity label (y+99); matches the earn-only slot.
+      text(reqLabel(item.req), pcx, y + 109, 9.5, rar.c, 800, 0, 'center', "'Unbounded'");
+      if (!hasChip) text(reqProgress(item.req), pcx, y + 120, 8.5, '#8a93bf', 700, 0);
       const bw2 = cw * 0.6;
       const bx2 = pcx - bw2 / 2;
-      rr(bx2, y + ch - 12, bw2, 3, 1.5);
+      const barY = hasChip ? y + 116 : y + ch - 7;   // above the chip, or pinned to the foot
+      rr(bx2, barY, bw2, 3, 1.5);
       ctx.fillStyle = 'rgba(255,255,255,.08)';
       ctx.fill();
-      rr(bx2, y + ch - 12, bw2 * frac, 3, 1.5);
+      rr(bx2, barY, bw2 * frac, 3, 1.5);
       ctx.fillStyle = rar.c;
       ctx.fill();
-      if (dual) {
-        const can2 = Profile.coins >= item.price;
-        const label = 'or ◎ ' + item.price.toLocaleString();
+      if (hasChip) {
+        const can2 = dual ? Profile.coins >= item.price : Profile.shards >= item.shardPrice!;
+        const label = dual ? 'or ◎ ' + item.price.toLocaleString() : 'or ◈ ' + item.shardPrice;
         ctx.save();
         ctx.font = "800 9.5px 'Sora', sans-serif";
         const tw = ctx.measureText(label).width;
         const chipW = tw + 16;
         const chipX = pcx - chipW / 2;
-        const chipY = y + 124;
-        rr(chipX, chipY, chipW, 16, 8);
-        ctx.fillStyle = can2 ? 'rgba(255,210,74,.14)' : 'rgba(255,255,255,.05)';
+        const chipY = y + ch - 14;                    // chip box bottom-aligned inside the card
+        rr(chipX, chipY, chipW, 14, 7);
+        ctx.fillStyle = can2
+          ? (dual ? 'rgba(255,210,74,.14)' : 'rgba(167,107,255,.18)')
+          : 'rgba(255,255,255,.05)';
         ctx.fill();
         ctx.restore();
-        text(label, pcx, chipY + 8, 9.5, can2 ? '#ffe39b' : '#7e88b5', 800, 0);
-        if (can2) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buy(shopTab, item));
-      } else if (item.shardPrice) {
-        // earn-only item with a ◈-shard alternate route (M8)
-        const canS = Profile.shards >= item.shardPrice;
-        const label = 'or ◈ ' + item.shardPrice;
-        ctx.save();
-        ctx.font = "800 9.5px 'Sora', sans-serif";
-        const tw = ctx.measureText(label).width;
-        const chipW = tw + 16;
-        const chipX = pcx - chipW / 2;
-        const chipY = y + 124;
-        rr(chipX, chipY, chipW, 16, 8);
-        ctx.fillStyle = canS ? 'rgba(167,107,255,.18)' : 'rgba(255,255,255,.05)';
-        ctx.fill();
-        ctx.restore();
-        text(label, pcx, chipY + 8, 9.5, canS ? '#cdb4ff' : '#7e88b5', 800, 0);
-        if (canS) btn('buy' + shopTab + item.id, x, btnY, cw, btnH, () => buyWithShards(shopTab, item));
+        const tcol = can2 ? (dual ? '#ffe39b' : '#cdb4ff') : '#7e88b5';
+        text(label, pcx, chipY + 7, 9.5, tcol, 800, 0);
+        if (can2) btn('buy' + shopTab + item.id, x, btnY, cw, btnH,
+          () => (dual ? buy(shopTab, item) : buyWithShards(shopTab, item)));
       }
     } else {
       // price chip
