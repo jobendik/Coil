@@ -38,16 +38,15 @@ put the descriptor in the description/preview text, not the title field.
 CrazyGames thumbnails are shown small, in a dense grid, often on mobile. Optimize for
 **instant readability at ~150–256 px.** The CrazyGames grid is bright and high-key,
 and the page UI is near-black — so a *bright, luminous* tile pops while a dark one
-recedes. Lead with a clean, bright thumbnail, NOT a dark cosmic one. (Validated by
-dropping candidates into the live grid: the bright, simple version won; the dark and
-the over-detailed nebula versions both lost.)
+recedes. Lead with a clean, bright thumbnail, NOT a dark cosmic one — confirmed by
+live-grid A/B (bright simple won; dark and over-detailed both receded).
 
 **→ Ready-to-paste generation prompts for all 3 variants live in `asset-prompts.md`.**
 
 Specs (follow the dashboard's current export sizes; design at 2×):
 - Aspect: **16:9** primary (e.g. 1600×900), plus a **square 1:1** crop for
-  mobile placements. Design so the focal point survives a centre-square crop.
-- Safe area: keep the hero element centred; assume edges get cropped.
+  mobile placements. Design so the focal point survives a center-square crop.
+- Safe area: keep the hero element centered; assume edges get cropped.
 
 Composition (do **not** just screenshot the game — abstract orbs read as generic):
 1. **Hero the character.** Render the cyan "Pulse" creature large, with its little
@@ -125,7 +124,7 @@ while a lava void rises beneath you. Easy to start, genuinely hard to master.
 How high can you climb before the void catches you?
 ```
 
-Keep it honest (no fake urgency, no "best game ever"). CrazyGames quality review favours
+Keep it honest (no fake urgency, no "best game ever"). CrazyGames quality review favors
 clear, accurate copy.
 
 ---
