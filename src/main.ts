@@ -31,9 +31,28 @@ Telemetry.session();
 claimEarnedUnlocks();
 
 initCanvas();
+
+// Drive the frame's height from the *visual* viewport so the canvas is always sized
+// to the visible area. Covers the cases CSS units miss: iOS Safari's show/hide
+// toolbar (visualViewport.height shrinks live) and older iOS (≤12, iPhone 6/7/8)
+// where `dvh` is unsupported and `100%`/`vh` over-report the height beneath the
+// toolbar. CSS keeps 100dvh as the pre-JS / unsupported fallback (see style.css).
+function setAppHeight(): void {
+  const h = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+  if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+}
+function onViewportChange(): void {
+  setAppHeight();
+  resize();
+}
+setAppHeight();
 resize();
-window.addEventListener('resize', resize);
-window.addEventListener('orientationchange', () => setTimeout(resize, 80));
+window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', () => setTimeout(onViewportChange, 80));
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', onViewportChange);
+  window.visualViewport.addEventListener('scroll', setAppHeight);
+}
 
 /* ---------- play / replay / revive flow ---------- */
 let paused = false;
@@ -341,7 +360,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 window.addEventListener('load', () => {
-  resize();
+  onViewportChange();
   void CG.init();
   startLoop();
 });

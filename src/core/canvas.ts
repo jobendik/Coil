@@ -6,7 +6,40 @@ export const view = {
   DPR: 1,
   SAFE_TOP: 8,
   SAFE_BOTTOM: 0,
+  // Global UI scale. The canvas scenes are laid out against a reference *usable*
+  // height (DESIGN_USABLE_H); on shorter viewports (iPhone 6/SE, small Android,
+  // Safari with its toolbar showing) the whole UI scales down uniformly so panels,
+  // type and buttons stay proportional and never overlap. We never scale ABOVE 1 —
+  // tall screens keep the design size and absorb the surplus as breathing room
+  // (a taller mission panel / wider result gaps), so large phones & tablets are
+  // unchanged. Recomputed every resize(). 1 until the first resize lands.
+  S: 1,
 };
+
+// Reference USABLE height (CSS px, viewport minus the safe-area insets) the home /
+// result / overlay layouts are tuned for. At/above this they render 1:1.
+const DESIGN_USABLE_H = 720;
+// Floor so body text stays legible on the very smallest supported phones
+// (iPhone SE 1st-gen ≈ 320×568). 375×667 lands around 0.78–0.93 depending on the
+// browser chrome, comfortably above this.
+const UI_SCALE_MIN = 0.66;
+
+/** Pure UI-scale calc — exported so the responsive layout test can exercise every
+ *  target resolution without a real DOM. */
+export function computeUiScale(H: number, safeTop: number, safeBottom: number): number {
+  const usable = H - safeTop - safeBottom;
+  const s = usable / DESIGN_USABLE_H;
+  return s < UI_SCALE_MIN ? UI_SCALE_MIN : s > 1 ? 1 : s;
+}
+
+/** Size of the square corner-icon buttons (top toggles + home reward cluster).
+ *  Held at 42px (a comfortable touch target) on every screen ≥372 CSS px wide —
+ *  which covers the supported floor of 375 — and shrunk only on narrower phones
+ *  (e.g. the 320-wide iPhone SE 1st-gen) so the left toggle row and the right
+ *  reward cluster can't collide in the middle. */
+export function topIconSize(): number {
+  return view.W >= 372 ? 42 : Math.max(33, (view.W / 372) * 42);
+}
 
 export function initCanvas(canvasId = 'cv'): void {
   const cv = document.getElementById(canvasId) as HTMLCanvasElement | null;
@@ -34,4 +67,5 @@ export function resize(): void {
   const sab = document.getElementById('sab');
   if (sab) insetB = sab.getBoundingClientRect().height || 0;
   view.SAFE_BOTTOM = Math.round(insetB);
+  view.S = computeUiScale(view.H, view.SAFE_TOP, view.SAFE_BOTTOM);
 }

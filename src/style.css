@@ -58,8 +58,17 @@ body {
   position: relative;
   width: 100%;
   max-width: 540px;
+  /* Viewport height, most-correct-wins (later valid declaration overrides):
+       1. 100%      — universal fallback (old engines / pre-JS first paint).
+       2. 100dvh    — dynamic viewport unit; tracks Safari's collapsing toolbar
+                      on iOS ≥15.4 / modern Android.
+       3. var(--app-h) — exact visual-viewport height set by JS (setAppHeight in
+                      main.ts). This is what fixes iPhone 6/7/8 (iOS ≤12, where dvh
+                      is unsupported and `100%` over-reports under the toolbar) and
+                      keeps the canvas sized to the *visible* area on every engine. */
   height: 100%;
   height: 100dvh;
+  height: var(--app-h, 100dvh);
   overflow: hidden;
   background: radial-gradient(130% 90% at 50% 0%, #160e33 0%, #0a0720 45%, #04030a 100%);
   box-shadow: 0 0 0 1px #1a1535, 0 30px 90px rgba(0, 0, 0, 0.6);

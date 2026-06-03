@@ -383,7 +383,7 @@ export const Result = {
   },
 
   render(): void {
-    const { ctx, W, H } = view;
+    const { ctx, W, S } = view;
     const d = this.d;
     const hd = this.header();
     // The game-over screen is a meta screen, so it shares the menu backdrop
@@ -395,31 +395,59 @@ export const Result = {
     Confetti.draw();
     Coins.draw();
     FlyCoins.draw();
-    text(hd[0], W / 2, H * 0.13, 34, hd[1], 800, 18, 'center', "'Unbounded'");
-    text(d.h + ' m', W / 2, H * 0.21, 46, '#fff', 800, 16, 'center', "'Unbounded'");
-    const sy = H * 0.28;
-    this.stat('BEST', Profile.best + ' m', W * 0.27, sy);
-    this.stat('PERFECT x', String(d.mc), W * 0.5, sy);
-    this.stat('PERFECTS', String(d.perf), W * 0.73, sy);
-    // one compact highlight line (vault > medals > achievement)
-    const hl = this.highlightLine();
-    if (hl) text(hl[0], W / 2, H * 0.315, 13, hl[1], 800, 6);
+
     // Shared Ascent state: the next still-locked form (drives the bottom button's
     // tease), any form earned THIS run, and the closure used to expand into the
     // full climb tower (tapping the always-visible edge rail or the button).
     const nf = this.nextForm();
     const justForm = d.claimedUnlocks.find((nm) => MILESTONE_SKINS.some((s) => s.name === nm)) ?? null;
     const openTower = (): void => { openAscent(d.h, justForm); state.scene = 'ascent'; };
-    // Fast (instant-retry) path renders the single nearest bar; the full stack is
-    // kept for the notable / post-tease path (M3). One bar starts a little lower
-    // so it reads as the focal hook rather than a lonely first row.
     const drawn = this.drawnBars();
-    let by = this.fast ? H * 0.42 : H * 0.36;
+    const hl = this.highlightLine();
+    // Zen has no death, so there's nothing to revive from — only offer DOUBLE COINS.
+    // Guard state.G (every other scene does): if there's somehow no run, don't offer revive.
+    const canRevive = !!state.G && !state.G.revivedThisRun && !d.zen;
+    // After revive is used, the prominent rewarded slot offers DOUBLE COINS instead.
+    const canDouble = !canRevive && !this.doubled && d.coins > 0;
+    const hasTopCTA = canRevive || canDouble;
+
+    // Post-bar status lines (level-up / mission / season / mastery), collected so
+    // the layout can reserve room and they never pile onto the action cluster.
+    const status: Array<{ t: string; size: number; color: string; glow: number }> = [];
+    if (this.fast && !drawn.some((b) => b.roll) && d.coins > 0) {
+      // On the fast path the chosen bar may not be the coin bar, but the run's coin
+      // payoff is a required element (§5.2) — surface it as its own line.
+      status.push({ t: '◎ +' + Math.round(this.coinRoll), size: 16, color: '#ffd24a', glow: 8 });
+    }
+    if (d.leveledUp) status.push({ t: 'LEVEL UP!', size: 16, color: '#2ff3e0', glow: 10 });
+    if (d.dailyJustDone) status.push({ t: 'MISSION COMPLETE  ◎+' + d.dailyReward, size: 14, color: '#9be35a', glow: 8 });
+    if (d.seasonTierUp > 0 && !this.fast) {
+      status.push({ t: 'SEASON TIER UP' + (d.seasonTierUp > 1 ? ' ×' + d.seasonTierUp : ''), size: 14, color: '#cdb4ff', glow: 8 });
+    }
+    if (d.masteryUp > 0 && !this.fast) {
+      status.push({ t: 'ZONE MASTERY UP' + (d.masteryUp > 1 ? ' ×' + d.masteryUp : ''), size: 13, color: '#9be35a', glow: 6 });
+    }
+
+    const L = resultLayout({
+      nBars: drawn.length, nExtra: status.length,
+      hasTopCTA, hasHighlight: !!hl, fast: this.fast,
+    });
+
+    // ----- top cluster -----
+    text(hd[0], W / 2, L.headerY, 34 * S, hd[1], 800, 18, 'center', "'Unbounded'");
+    text(d.h + ' m', W / 2, L.heightY, 46 * S, '#fff', 800, 16, 'center', "'Unbounded'");
+    this.stat('BEST', Profile.best + ' m', W * 0.27, L.statY);
+    this.stat('PERFECT x', String(d.mc), W * 0.5, L.statY);
+    this.stat('PERFECTS', String(d.perf), W * 0.73, L.statY);
+    if (hl) text(hl[0], W / 2, L.highlightY, 13 * S, hl[1], 800, 6);
+
+    // ----- progress bars (pitch compressed by the layout if the screen is short) -----
     for (let i = 0; i < drawn.length; i++) {
       const b = drawn[i];
+      const by = L.barTop + i * L.barStep;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.font = "600 12px 'Sora'";
+      ctx.font = `600 ${L.barFont}px 'Sora'`;
       ctx.fillStyle = '#c5cef0';
       ctx.fillText(b.label, W * 0.12, by);
       ctx.textAlign = 'right';
@@ -442,64 +470,39 @@ export const Result = {
       } else {
         ctx.fillText(b.val, W * 0.88, by);
       }
-      rr(W * 0.12, by + 12, W * 0.76, 9, 4);
+      rr(W * 0.12, by + 11 * S, W * 0.76, 9 * S, 4 * S);
       ctx.fillStyle = 'rgba(255,255,255,.08)';
       ctx.fill();
-      rr(W * 0.12, by + 12, W * 0.76 * clamp(this.anim[i], 0, 1), 9, 4);
+      rr(W * 0.12, by + 11 * S, W * 0.76 * clamp(this.anim[i], 0, 1), 9 * S, 4 * S);
       ctx.fillStyle = b.color;
       ctx.shadowColor = b.color;
       ctx.shadowBlur = 8;
       ctx.fill();
       ctx.shadowBlur = 0;
-      by += 46;
     }
-    // On the fast path the chosen bar may not be the coin bar, but "Sparks earned"
-    // is a required element (§5.2) — surface the run's coin payoff as its own line.
-    if (this.fast && !drawn.some((b) => b.roll) && d.coins > 0) {
-      text('◎ +' + Math.round(this.coinRoll), W / 2, by + 2, 16, '#ffd24a', 800, 8);
-      by += 30;
+    // ----- status lines, stacked under the bars -----
+    for (let i = 0; i < status.length; i++) {
+      const s = status[i];
+      text(s.t, W / 2, L.extraTop + i * L.extraStep, s.size * S, s.color, 800, s.glow);
     }
-    if (d.leveledUp) text('LEVEL UP!', W / 2, by + 4, 16, '#2ff3e0', 800, 10);
-    if (d.dailyJustDone) {
-      text('MISSION COMPLETE  ◎+' + d.dailyReward,
-        W / 2, by + (d.leveledUp ? 26 : 4), 14, '#9be35a', 700, 8);
-    }
-    if (d.seasonTierUp > 0 && !this.fast) {
-      const yOff = (d.leveledUp ? 22 : 0) + (d.dailyJustDone ? 22 : 0) + 4;
-      text('SEASON TIER UP' + (d.seasonTierUp > 1 ? ' ×' + d.seasonTierUp : ''),
-        W / 2, by + yOff, 14, '#cdb4ff', 800, 8);
-    }
-    if (d.masteryUp > 0 && !this.fast) {
-      const yOff = (d.leveledUp ? 22 : 0) + (d.dailyJustDone ? 22 : 0) + (d.seasonTierUp > 0 ? 22 : 0) + 4;
-      text('ZONE MASTERY UP' + (d.masteryUp > 1 ? ' ×' + d.masteryUp : ''),
-        W / 2, by + yOff, 13, '#9be35a', 800, 6);
-    }
-    // Zen has no death, so there's nothing to revive from — only offer DOUBLE COINS.
-    // Guard state.G (every other scene does): if there's somehow no run, don't offer revive.
-    const canRevive = !!state.G && !state.G.revivedThisRun && !d.zen;
-    // After revive is used, the prominent rewarded slot offers DOUBLE COINS instead.
-    const canDouble = !canRevive && !this.doubled && d.coins > 0;
-    const hasTopCTA = canRevive || canDouble;
+
     const sk = skin();
-    const pw = W * 0.62;
-    const px = W / 2 - pw / 2;
 
-    text(this.nextAction(), W / 2, hasTopCTA ? H * 0.60 : H * 0.70, 14, '#9fb0e0', 600, 0);
+    // ----- next-action carrot + action cluster (anchored up from the bottom) -----
+    text(this.nextAction(), W / 2, L.nextActionY, 14 * S, '#9fb0e0', 600, 0);
 
-    let py = hasTopCTA ? H * 0.635 : H * 0.76;
-
-    if (hasTopCTA) {
-      const ch = 54;
-      rr(px, py, pw, ch, 14);
+    if (L.cta) {
+      const { x: px, y: py, w: pw, h: ch } = L.cta;
+      rr(px, py, pw, ch, 14 * S);
       if (canRevive) {
         ctx.fillStyle = '#9be35a';
         ctx.shadowColor = '#9be35a';
         ctx.shadowBlur = 22;
         ctx.fill();
         ctx.shadowBlur = 0;
-        text('CONTINUE', W / 2, py + ch / 2 - 7, 18, '#04130a', 800, 0, 'center', "'Unbounded'");
+        text('CONTINUE', W / 2, py + ch * 0.37, 18 * S, '#04130a', 800, 0, 'center', "'Unbounded'");
         text(CG.ready ? 'WATCH AD TO REVIVE' : 'ONE FREE CONTINUE',
-          W / 2, py + ch / 2 + 12, 9.5, '#06200c', 700, 0);
+          W / 2, py + ch * 0.72, 9.5 * S, '#06200c', 700, 0);
         btn('revive', px, py, pw, ch, () => onReviveRequested());
       } else {
         ctx.fillStyle = '#ffd24a';
@@ -507,19 +510,18 @@ export const Result = {
         ctx.shadowBlur = 22;
         ctx.fill();
         ctx.shadowBlur = 0;
-        text(this.busyAd ? 'LOADING…' : 'DOUBLE COINS', W / 2, py + ch / 2 - 7, 18, '#3a2400', 800, 0, 'center', "'Unbounded'");
+        text(this.busyAd ? 'LOADING…' : 'DOUBLE COINS', W / 2, py + ch * 0.37, 18 * S, '#3a2400', 800, 0, 'center', "'Unbounded'");
         if (!this.busyAd) {
           text(CG.ready ? `WATCH AD · ◎ ${d.coins} → ${d.coins * 2}` : `FREE · ◎ ×2`,
-            W / 2, py + ch / 2 + 12, 9.5, '#4a3200', 700, 0);
+            W / 2, py + ch * 0.72, 9.5 * S, '#4a3200', 700, 0);
           btn('double', px, py, pw, ch, () => this.doubleCoins());
         }
       }
-      py += ch + 9;
     }
 
     {
-      const ph = hasTopCTA ? 48 : 58;
-      rr(px, py, pw, ph, 14);
+      const { x: px, y: py, w: pw, h: ph } = L.replay;
+      rr(px, py, pw, ph, 14 * S);
       if (hasTopCTA) {
         ctx.fillStyle = 'rgba(20,16,48,.85)';
         ctx.fill();
@@ -534,66 +536,66 @@ export const Result = {
         ctx.shadowBlur = 0;
       }
       text(d.zen ? 'ZEN AGAIN' : d.daily ? 'DAILY AGAIN' : 'PLAY AGAIN', W / 2, py + ph / 2,
-        hasTopCTA ? 17 : 20, hasTopCTA ? '#eaf6ff' : '#04030a', 800, 0, 'center', "'Unbounded'");
+        (hasTopCTA ? 17 : 20) * S, hasTopCTA ? '#eaf6ff' : '#04030a', 800, 0, 'center', "'Unbounded'");
       btn('replay', px, py, pw, ph, () => onReplayRequested());
-      py += ph + 12;
     }
 
     // Bottom row: ASCENT · SHOP · MENU. The Ascent button opens the climb tower
     // (how far you came + what waits above). It glows green when a new form was
     // earned this run, and pulses amber as a near-miss tease when the run ended
     // close to the next still-locked form — driving the "one more run" tap.
-    const g3 = 9;
-    const third = (pw - g3 * 2) / 3;
-    const newEvo = !!justForm;
-    const closeToForm = !newEvo && !!nf && nf.gap > 0 && nf.gap <= 120;
-    rr(px, py, third, 46, 12);
-    ctx.fillStyle = 'rgba(20,16,48,.7)';
-    ctx.fill();
-    if (newEvo) {
-      ctx.strokeStyle = '#9be35a';
-      ctx.shadowColor = '#9be35a';
-      ctx.shadowBlur = 12 + Math.sin(this.t * 5) * 6;
-    } else if (closeToForm) {
-      ctx.strokeStyle = '#ffe39b';
-      ctx.shadowColor = '#ffd24a';
-      ctx.shadowBlur = 10 + Math.sin(this.t * 5) * 5;
-    } else {
+    {
+      const { x: px, y: py, third, gap: g3, h: rh } = L.bottomRow;
+      const newEvo = !!justForm;
+      const closeToForm = !newEvo && !!nf && nf.gap > 0 && nf.gap <= 120;
+      rr(px, py, third, rh, 12 * S);
+      ctx.fillStyle = 'rgba(20,16,48,.7)';
+      ctx.fill();
+      if (newEvo) {
+        ctx.strokeStyle = '#9be35a';
+        ctx.shadowColor = '#9be35a';
+        ctx.shadowBlur = 12 + Math.sin(this.t * 5) * 6;
+      } else if (closeToForm) {
+        ctx.strokeStyle = '#ffe39b';
+        ctx.shadowColor = '#ffd24a';
+        ctx.shadowBlur = 10 + Math.sin(this.t * 5) * 5;
+      } else {
+        ctx.strokeStyle = 'rgba(255,255,255,.12)';
+      }
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      text('ASCENT', px + third / 2, py + rh * 0.37, 11 * S,
+        newEvo ? '#9be35a' : closeToForm ? '#ffe39b' : '#cdb4ff', 800, (newEvo || closeToForm) ? 4 : 0);
+      text(closeToForm ? '↑ ' + nf!.gap + ' m' : nf ? 'next form ↑' : 'MAXED',
+        px + third / 2, py + rh * 0.7, 9.5 * S, closeToForm ? '#ffe39b' : '#9fb0e0', 700, 0);
+      btn('revo', px, py, third, rh, openTower);
+
+      const cx2 = px + third + g3;
+      rr(cx2, py, third, rh, 12 * S);
+      ctx.fillStyle = 'rgba(20,16,48,.7)';
+      ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,.12)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      text('SHOP', cx2 + third / 2, py + rh / 2, 12 * S, sk.t, 700, 0);
+      btn('rshop', cx2, py, third, rh, () => {
+        Telemetry.shopOpen();
+        state.scene = 'shop';
+      });
+
+      const mx2 = px + (third + g3) * 2;
+      rr(mx2, py, third, rh, 12 * S);
+      ctx.fillStyle = 'rgba(20,16,48,.7)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.12)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      text('MENU', mx2 + third / 2, py + rh / 2, 12 * S, '#9fb0e0', 700, 0);
+      btn('rmenu', mx2, py, third, rh, () => {
+        state.scene = 'home';
+      });
     }
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    text('ASCENT', px + third / 2, py + 17, 11,
-      newEvo ? '#9be35a' : closeToForm ? '#ffe39b' : '#cdb4ff', 800, (newEvo || closeToForm) ? 4 : 0);
-    text(closeToForm ? '↑ ' + nf!.gap + ' m' : nf ? 'next form ↑' : 'MAXED',
-      px + third / 2, py + 32, 9.5, closeToForm ? '#ffe39b' : '#9fb0e0', 700, 0);
-    btn('revo', px, py, third, 46, openTower);
-
-    const cx2 = px + third + g3;
-    rr(cx2, py, third, 46, 12);
-    ctx.fillStyle = 'rgba(20,16,48,.7)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.12)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    text('SHOP', cx2 + third / 2, py + 23, 12, sk.t, 700, 0);
-    btn('rshop', cx2, py, third, 46, () => {
-      Telemetry.shopOpen();
-      state.scene = 'shop';
-    });
-
-    const mx2 = px + (third + g3) * 2;
-    rr(mx2, py, third, 46, 12);
-    ctx.fillStyle = 'rgba(20,16,48,.7)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,.12)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    text('MENU', mx2 + third / 2, py + 23, 12, '#9fb0e0', 700, 0);
-    btn('rmenu', mx2, py, third, 46, () => {
-      state.scene = 'home';
-    });
 
     // "Tap anywhere to play again" — registered LAST so specific buttons win
     // their bounds. After a short delay (long enough to read the new stats)
@@ -602,14 +604,112 @@ export const Result = {
       const hintAlpha = clamp((this.t - REPLAY_ZONE_DELAY) * 1.4, 0, 0.55);
       ctx.save();
       ctx.globalAlpha = hintAlpha;
-      text('TAP TO PLAY AGAIN', W / 2, H * 0.95, 11, '#9fb0e0', 700, 0);
+      text('TAP TO PLAY AGAIN', W / 2, L.tapHintY, 11 * S, '#9fb0e0', 700, 0);
       ctx.restore();
-      btn('rtap', 0, 0, W, H, () => onReplayRequested());
+      btn('rtap', 0, 0, W, view.H, () => onReplayRequested());
     }
   },
 
   stat(label: string, val: string, x: number, y: number): void {
-    text(val, x, y, 22, '#fff', 800, 0);
-    text(label, x, y + 22, 11, '#7e88b5', 600, 0);
+    const S = view.S;
+    text(val, x, y, 22 * S, '#fff', 800, 0);
+    text(label, x, y + 22 * S, 11 * S, '#7e88b5', 600, 0);
   },
 };
+
+export interface ResultLayout {
+  S: number;
+  headerY: number;
+  heightY: number;
+  statY: number;
+  highlightY: number;
+  barTop: number;
+  barStep: number;
+  barFont: number;
+  extraTop: number;
+  extraStep: number;
+  nextActionY: number;
+  cta: { x: number; y: number; w: number; h: number } | null;
+  replay: { x: number; y: number; w: number; h: number };
+  bottomRow: { x: number; y: number; third: number; gap: number; h: number };
+  tapHintY: number;
+}
+
+/* SINGLE SOURCE OF TRUTH for the game-over screen's vertical layout.
+
+   The original bug was two INDEPENDENT coordinate systems: the progress bars grew
+   downward in fixed 46px steps from a viewport fraction (H*0.36), while the CTA
+   buttons were pinned to their own fractions (H*0.635…). On short screens the bar
+   stack ran straight into the CTAs, and the bottom nav ran into "TAP TO PLAY
+   AGAIN".
+
+   Here a top cluster (header / height / stats / highlight) keeps its proportional
+   anchors with scaled type, the action cluster (next-action → optional CTA →
+   PLAY AGAIN → ASCENT/SHOP/MENU) is anchored UP from the bottom safe edge, and the
+   bars + status lines are laid out in the gap BETWEEN them — compressing their row
+   pitch if the gap is tight so they can never overlap the action cluster. Pure +
+   exported for the responsive layout test. */
+export function resultLayout(o: {
+  nBars: number; nExtra: number; hasTopCTA: boolean; hasHighlight: boolean; fast: boolean;
+}): ResultLayout {
+  const { W, H, SAFE_BOTTOM, S } = view;
+  const cx = W / 2;
+  const bottom = H - SAFE_BOTTOM;
+  const pw = W * 0.62;
+  const px = cx - pw / 2;
+
+  // top cluster — proportional anchors (spreads on tall screens as before), scaled
+  // type; the highlight sits a fixed scaled gap UNDER the stat labels so it can't
+  // ride into them on short screens (the old "DAILY RUNNER overlaps stats" bug).
+  const headerY = H * 0.13;
+  const heightY = H * 0.21;
+  const statY = H * 0.28;
+  const highlightY = statY + 42 * S;
+  const topEnd = (o.hasHighlight ? highlightY : statY + 22 * S) + 14 * S;
+
+  // action cluster — anchored UP from the bottom safe edge.
+  const tapHintY = bottom - 16 * S;
+  const rowH = 46 * S;
+  const bottomRowY = tapHintY - 16 * S - rowH;
+  const replayH = (o.hasTopCTA ? 48 : 58) * S;
+  const replayY = bottomRowY - 12 * S - replayH;
+  let cta: ResultLayout['cta'] = null;
+  let clusterTop = replayY;
+  if (o.hasTopCTA) {
+    const ch = 54 * S;
+    const cy = replayY - 9 * S - ch;
+    cta = { x: px, y: cy, w: pw, h: ch };
+    clusterTop = cy;
+  }
+  const nextActionY = clusterTop - 16 * S;
+
+  // bar region between the two clusters; compress the per-row pitch if the gap is
+  // tight so the bars + status lines always fit (never overlapping the cluster).
+  const regionTop = topEnd + 8 * S;
+  const regionBot = nextActionY - 12 * S;
+  const avail = Math.max(0, regionBot - regionTop);
+  const barNat = 46 * S;
+  const extraNat = 22 * S;
+  const need = o.nBars * barNat + o.nExtra * extraNat;
+  const f = need > avail && need > 0 ? avail / need : 1;
+  const barStep = barNat * f;
+  const extraStep = extraNat * f;
+  const content = o.nBars * barStep + o.nExtra * extraStep;
+  // bias content slightly down when there's slack so a lone fast-path bar reads as
+  // the focal hook rather than glued under the stat row (mirrors the old H*0.42).
+  const topPad = Math.max(0, avail - content) * (o.fast ? 0.4 : 0.16);
+  const cursor = regionTop + topPad;
+  const barTop = cursor + barStep * 0.36;             // first bar's label baseline
+  const extraTop = cursor + o.nBars * barStep + extraStep * 0.5;
+
+  return {
+    S, headerY, heightY, statY, highlightY,
+    barTop, barStep, barFont: 12 * S,
+    extraTop, extraStep,
+    nextActionY,
+    cta,
+    replay: { x: px, y: replayY, w: pw, h: replayH },
+    bottomRow: { x: px, y: bottomRowY, third: (pw - 9 * S * 2) / 3, gap: 9 * S, h: rowH },
+    tapHintY,
+  };
+}

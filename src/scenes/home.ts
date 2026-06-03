@@ -1,4 +1,4 @@
-import { view } from '../core/canvas';
+import { view, topIconSize } from '../core/canvas';
 import { state } from '../game/state';
 import { skin, Owned } from '../game/skins';
 import { Profile } from '../game/profile';
@@ -172,29 +172,32 @@ function glossButton(
 }
 
 /* Chrome "COIL" wordmark: bloom + faint chromatic split for depth + a vertical
-   metal gradient body + a top edge highlight. Reads premium with zero assets. */
-function drawGlossLogo(cx: number, cy: number): void {
+   metal gradient body + a top edge highlight. Reads premium with zero assets.
+   `size` (the cap height in px) scales the whole mark so it shrinks gracefully on
+   short viewports without changing the look. */
+function drawGlossLogo(cx: number, cy: number, size = 64): void {
   const { ctx } = view;
+  const k = size / 64;   // proportional factor for the gradient stops + edge clip
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = "800 64px 'Unbounded', sans-serif";
+  ctx.font = `800 ${size}px 'Unbounded', sans-serif`;
   // outer bloom
   ctx.save();
   ctx.shadowColor = '#9ad7ff';
-  ctx.shadowBlur = glowFX(34);
+  ctx.shadowBlur = glowFX(34 * k);
   ctx.fillStyle = 'rgba(180,220,255,0.5)';
   ctx.fillText('COIL', cx, cy);
   ctx.restore();
   // subtle chromatic depth
   ctx.globalAlpha = 0.32;
   ctx.fillStyle = '#2ff3e0';
-  ctx.fillText('COIL', cx - 1.5, cy + 1.5);
+  ctx.fillText('COIL', cx - 1.5 * k, cy + 1.5 * k);
   ctx.fillStyle = '#a76bff';
-  ctx.fillText('COIL', cx + 1.5, cy - 1.5);
+  ctx.fillText('COIL', cx + 1.5 * k, cy - 1.5 * k);
   ctx.globalAlpha = 1;
   // chrome body
-  const g = ctx.createLinearGradient(cx, cy - 30, cx, cy + 30);
+  const g = ctx.createLinearGradient(cx, cy - 30 * k, cx, cy + 30 * k);
   g.addColorStop(0, '#ffffff');
   g.addColorStop(0.45, '#dfeefc');
   g.addColorStop(0.5, '#a8c4e4');
@@ -205,7 +208,7 @@ function drawGlossLogo(cx: number, cy: number): void {
   // top edge highlight
   ctx.save();
   ctx.beginPath();
-  ctx.rect(cx - 190, cy - 36, 380, 20);
+  ctx.rect(cx - 190 * k, cy - 36 * k, 380 * k, 20 * k);
   ctx.clip();
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.fillText('COIL', cx, cy);
@@ -497,6 +500,7 @@ function drawMissionIcon(cx: number, cy: number, fam: MissionFam, col: string, g
 function secondaryTile(
   x: number, y: number, w: number, h: number, accent: string,
   label: string, sub: string, glow: boolean, icon: (cx: number, cy: number, col: string) => void,
+  s = 1,
 ): void {
   const { ctx } = view;
   rr(x, y, w, h, 12);
@@ -516,9 +520,12 @@ function secondaryTile(
   }
   ctx.stroke();
   ctx.shadowBlur = 0;
-  icon(x + w / 2, y + 15, glow ? accent : '#cdd8ff');
-  text(label, x + w / 2, y + 30, 11.5, glow ? accent : '#eaf2ff', 800, glow ? 4 : 0);
-  if (sub) text(sub, x + w / 2, y + 41, 8.5, '#9fb0e0', 600, 0);
+  // Offsets are a fraction of the tile height so the glyph + label + sub stay
+  // centred and legible whether the tile is full-size or scaled down on a short
+  // viewport. (h ≈ 46·s at design size.)
+  icon(x + w / 2, y + h * 0.33, glow ? accent : '#cdd8ff');
+  text(label, x + w / 2, y + h * 0.64, 11.5 * s, glow ? accent : '#eaf2ff', 800, glow ? 4 : 0);
+  if (sub) text(sub, x + w / 2, y + h * 0.88, 8.5 * s, '#9fb0e0', 600, 0);
 }
 
 function chipPill(cx: number, cy: number, label: string, col: string): void {
@@ -544,12 +551,13 @@ function chipPill(cx: number, cy: number, label: string, col: string): void {
 /* Top-right reward shortcuts (spin wheel + bonus chest) with "available" badges. */
 function drawRewardIcons(): void {
   const { ctx, W, SAFE_TOP } = view;
-  const s = 42;
+  const s = topIconSize();
   const pad = 12;
+  const gap = Math.round(s * 0.19);   // inter-icon gap (≈8 at 42px)
   const top = pad + SAFE_TOP;
   const wx = W - pad - s;
-  const cxx = W - pad - 2 * s - 8;
-  const vxx = W - pad - 3 * s - 16;
+  const cxx = W - pad - 2 * s - gap;
+  const vxx = W - pad - 3 * s - 2 * gap;
 
   const pill = (x: number): void => {
     rr(x, top, s, s, 10);
@@ -633,57 +641,156 @@ function drawRewardIcons(): void {
   btn('homeweekly', vxx, top, s, s, () => openOverlay('weekly'));
 }
 
+export interface HomeLayout {
+  S: number;
+  logoCY: number;
+  logoSize: number;
+  tagY: number;
+  heroCY: number;
+  heroR: number;
+  iconRowBottom: number;
+  stat: { x: number; y: number; w: number; h: number };
+  season: { x: number; y: number; w: number; h: number };
+  missions: { x: number; y: number; w: number; h: number };
+  nextY: number;
+  play: { x: number; y: number; w: number; h: number };
+  sec: { x: number; y: number; w: number; h: number; gap: number; third: number };
+  firstPlay: { x: number; y: number; w: number; h: number };
+}
+
+/* SINGLE SOURCE OF TRUTH for the home menu's vertical layout. Everything is
+   derived from the live viewport + the global UI scale (view.S) so the same maths
+   fits a 320×568 iPhone SE and a 540-wide tablet column without overlap.
+
+   Structure: a top hero block (logo + tagline + orbit) parked clear of the corner
+   icon rows, a bottom cluster (NEXT line + PLAY + DAILY/ZEN/SHOP) anchored to the
+   bottom safe edge, and a flexible middle (stat card → season banner → missions
+   panel). The HERO ORBIT is the flex element: its radius is solved so the missions
+   panel always meets PANEL_TARGET, shrinking the orbit (to a floor) on short
+   screens instead of letting the panel collapse into the NEXT line / PLAY button —
+   which was the original bug (`mH = Math.max(90, …)` forced overflow). On tall
+   screens the orbit clamps to its nominal size and the surplus height flows into a
+   roomier panel, so large phones/tablets look essentially unchanged.
+
+   Pure + exported so the responsive layout test can assert no-overlap on every
+   target resolution without a DOM. */
+export function homeLayout(firstSession = false): HomeLayout {
+  const { W, H, SAFE_TOP, SAFE_BOTTOM, S } = view;
+  const cx = W / 2;
+  const bottom = H - SAFE_BOTTOM;
+
+  // Corner icon rows: right = 1 reward row; left (home) = 2 toggle rows. Each is a
+  // topIconSize() square with a 12px top pad and an 8px row gap. The logo parks
+  // just beneath them.
+  const isz = topIconSize();
+  const igap = Math.round(isz * 0.19);   // matches drawTopToggles / drawRewardIcons
+  const iconRowBottom = SAFE_TOP + 12 + isz + igap + isz;
+
+  // Bottom cluster, anchored to the bottom safe edge (scaled).
+  const secH = 46 * S;
+  const secY = bottom - secH - 10 * S;
+  const playH = 56 * S;
+  const playY = secY - 12 * S - playH;
+  const nextY = playY - 16 * S;
+
+  // Hero/logo block. heroCY is proportional (~0.30 H) but never higher than the
+  // point at which the logo (parked 96·S above the orbit centre) would touch the
+  // icon rows — guaranteeing the wordmark clears the toggles on every height.
+  const logoSize = 56 * S;
+  const heroCYmin = iconRowBottom + logoSize * 0.5 + 96 * S;
+  const heroCY = Math.max(H * 0.30, heroCYmin);
+  const logoCY = heroCY - 96 * S;
+  const tagY = logoCY + 32 * S;
+
+  const cardX = W * 0.07;
+  const cardW = W * 0.86;
+  const statH = 86 * S;
+  const seasonH = 30 * S;
+  const gap = 8 * S;
+  const PANEL_TARGET = 124 * S;   // header + three comfortable mission rows
+  const mBottom = nextY - 12 * S;
+  // hero CENTRE → missions-panel top, excluding the (solved-for) hero radius.
+  const heroBelow = 14 * S + statH + gap + seasonH + gap;
+  // Solve heroR so mH == PANEL_TARGET, then clamp: tall screens take the nominal
+  // 56·S orbit (surplus → bigger panel); the shortest take the 24·S floor.
+  const heroR = firstSession
+    ? 56 * S
+    : clamp(mBottom - PANEL_TARGET - heroCY - heroBelow, 24 * S, 56 * S);
+
+  const statY = heroCY + heroR + 14 * S;
+  const seasonY = statY + statH + gap;
+  const mTop = seasonY + seasonH + gap;
+  const mH = Math.max(0, mBottom - mTop);
+
+  const sw = W * 0.84;
+  const sgap = 8;
+  const third = (sw - sgap * 2) / 3;
+  const pw = W * 0.66;
+
+  // First-session onboarding PLAY: a single big button, centred in the open space
+  // below the orbit, clamped so it never collides with the orbit or the bottom edge.
+  const fpw = W * 0.64;
+  const fph = 66 * S;
+  const fpy = clamp(H * 0.6, heroCY + heroR + 40 * S, bottom - fph - 28 * S);
+
+  return {
+    S,
+    logoCY,
+    logoSize,
+    tagY,
+    heroCY,
+    heroR,
+    iconRowBottom,
+    nextY,
+    stat: { x: cardX, y: statY, w: cardW, h: statH },
+    season: { x: cardX, y: seasonY, w: cardW, h: seasonH },
+    missions: { x: cardX, y: mTop, w: cardW, h: mH },
+    play: { x: cx - pw / 2, y: playY, w: pw, h: playH },
+    sec: { x: cx - sw / 2, y: secY, w: sw, h: secH, gap: sgap, third },
+    firstPlay: { x: cx - fpw / 2, y: fpy, w: fpw, h: fph },
+  };
+}
+
 export function renderHome(dt: number): void {
-  const { ctx, W, H } = view;
+  const { ctx, W } = view;
   homeT += dt;
   drawBG();
   drawMenuBg();
 
   const cx = W / 2;
-  const cy = H * 0.32;
   const sk = skin();
+  const firstSession = Profile.runsPlayed < 1;
+  const L = homeLayout(firstSession);
+  const S = L.S;
 
   // ---- logo + tagline + hero orbit ----
-  drawGlossLogo(cx, cy - 118);
-  text('Tap in the glowing gate · climb the void', cx, cy - 74, 13, '#9fb0e0', 600, 0);
+  drawGlossLogo(cx, L.logoCY, L.logoSize);
+  text('Tap in the glowing gate · climb the void', cx, L.tagY, 13 * S, '#9fb0e0', 600, 0);
   // weekly event chip (M8) — the "scheduled to return for" hook
   const ev = Event.current();
   if (ev.id !== 'none' && Profile.runsPlayed >= 1) {
-    chipPill(cx, cy - 54, '⚡ ' + ev.name + ' · ' + ev.desc, '#ffd24a');
+    chipPill(cx, L.tagY + 20 * S, '⚡ ' + ev.name + ' · ' + ev.desc, '#ffd24a');
   }
-  drawHeroOrbit(cx, cy, 64);
+  drawHeroOrbit(cx, L.heroCY, L.heroR);
 
   // ---- FIRST SESSION: only the core loop + one pulsing PLAY (onboarding) ----
-  if (Profile.runsPlayed < 1) {
-    const pw = W * 0.64;
-    const ph = 66;
-    const pxx = W / 2 - pw / 2;
-    const pyy = H * 0.62 - view.SAFE_BOTTOM;
+  if (firstSession) {
+    const { x: pxx, y: pyy, w: pw, h: ph } = L.firstPlay;
     const pulse = 1 + Math.sin(homeT * 3) * 0.03;
     ctx.save();
-    ctx.translate(W / 2, pyy + ph / 2);
+    ctx.translate(cx, pyy + ph / 2);
     ctx.scale(pulse, pulse);
-    ctx.translate(-W / 2, -(pyy + ph / 2));
-    glossButton(pxx, pyy, pw, ph, sk.c, { r: 18, shimmer: homeT * 0.3 });
+    ctx.translate(-cx, -(pyy + ph / 2));
+    glossButton(pxx, pyy, pw, ph, sk.c, { r: 18 * S, shimmer: homeT * 0.3 });
     ctx.restore();
-    text('PLAY', W / 2, pyy + ph / 2, 26, '#04030a', 800, 0, 'center', "'Unbounded'");
+    text('PLAY', cx, pyy + ph / 2, 26 * S, '#04030a', 800, 0, 'center', "'Unbounded'");
     btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
     drawTopToggles();
     return;
   }
 
-  // ---- bottom cluster is anchored from the bottom (respects SAFE_BOTTOM) ----
-  const secH = 46;
-  const secY = H - secH - 10 - view.SAFE_BOTTOM;
-  const playH = 60;
-  const playY = secY - 12 - playH;
-  const nextY = playY - 18;
-
   // ---- STATS CARD: Star Vault | Best/Level, with a streak chip ----
-  const cardX = W * 0.07;
-  const cardW = W * 0.86;
-  const statY = H * 0.4;
-  const statH = H * 0.135;
+  const { x: cardX, y: statY, w: cardW, h: statH } = L.stat;
   card(cardX, statY, cardW, statH, '#1a1440');
   const lx = cardX + cardW * 0.27;
   const pp = 0.6 + Math.sin(homeT * 3) * 0.4;
@@ -691,31 +798,31 @@ export function renderHome(dt: number): void {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffd24a';
-  ctx.font = "800 9px 'Unbounded', sans-serif";
+  ctx.font = `800 ${9 * S}px 'Unbounded', sans-serif`;
   ctx.shadowColor = '#ffd24a';
   ctx.shadowBlur = glowFX(8 + pp * 5);
-  ctx.fillText('✦ STAR VAULT ✦', lx, statY + 22);
-  ctx.font = "800 22px 'Unbounded', sans-serif";
+  ctx.fillText('✦ STAR VAULT ✦', lx, statY + statH * 0.26);
+  ctx.font = `800 ${22 * S}px 'Unbounded', sans-serif`;
   ctx.fillStyle = '#fff3b0';
   ctx.shadowBlur = glowFX(14 + pp * 6);
-  ctx.fillText('★ ' + Math.round(Vault.v).toLocaleString(), lx, statY + 46);
+  ctx.fillText('★ ' + Math.round(Vault.v).toLocaleString(), lx, statY + statH * 0.54);
   ctx.restore();
   // divider
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.08)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(cardX + cardW * 0.5, statY + 16);
-  ctx.lineTo(cardX + cardW * 0.5, statY + statH - 30);
+  ctx.moveTo(cardX + cardW * 0.5, statY + statH * 0.19);
+  ctx.lineTo(cardX + cardW * 0.5, statY + statH * 0.65);
   ctx.stroke();
   ctx.restore();
   const rx2 = cardX + cardW * 0.73;
   const lp = Profile.levelProgress();
-  text('BEST', rx2, statY + 18, 10, '#9fb0e0', 700, 0);
-  text(Profile.best + ' m', rx2, statY + 40, 24, sk.t, 800, 8);
-  text(Profile.title() + ' · Lv ' + lp.l, rx2, statY + 60, 10, '#cdd8ff', 600, 0);
+  text('BEST', rx2, statY + statH * 0.21, 10 * S, '#9fb0e0', 700, 0);
+  text(Profile.best + ' m', rx2, statY + statH * 0.47, 24 * S, sk.t, 800, 8);
+  text(Profile.title() + ' · Lv ' + lp.l, rx2, statY + statH * 0.7, 10 * S, '#cdd8ff', 600, 0);
   // streak / first-run / constellation chip
-  const chipY = statY + statH - 15;
+  const chipY = statY + statH - 15 * S;
   const showStreak = Profile.streak >= 2;
   const showBonus = !Profile.hasPlayedToday();
   if (showStreak && showBonus) {
@@ -730,10 +837,7 @@ export function renderHome(dt: number): void {
   }
 
   // ---- SEASON banner (tappable → the full 30-tier track) ----
-  const mX = W * 0.07;
-  const mW = W * 0.86;
-  const seasonY = statY + statH + 10;
-  const seasonH = 30;
+  const { x: mX, y: seasonY, w: mW, h: seasonH } = L.season;
   rr(mX, seasonY, mW, seasonH, 10);
   ctx.fillStyle = 'rgba(30,22,60,0.7)';
   ctx.fill();
@@ -741,32 +845,32 @@ export function renderHome(dt: number): void {
   ctx.strokeStyle = hexA('#a76bff', 0.4);
   ctx.lineWidth = 1.2;
   ctx.stroke();
-  text('SEASON · TIER ' + Season.d.tier, mX + 12, seasonY + seasonH / 2, 11, '#cdb4ff', 800, 0, 'left', "'Unbounded'");
+  text('SEASON · TIER ' + Season.d.tier, mX + 12, seasonY + seasonH / 2, 11 * S, '#cdb4ff', 800, 0, 'left', "'Unbounded'");
   // mini progress bar
   const sbW = mW * 0.34;
-  const sbX = mX + mW - sbW - 40;
-  rr(sbX, seasonY + seasonH / 2 - 3, sbW, 6, 3);
+  const sbX = mX + mW - sbW - 40 * S;
+  rr(sbX, seasonY + seasonH / 2 - 3 * S, sbW, 6 * S, 3 * S);
   ctx.fillStyle = 'rgba(255,255,255,.08)';
   ctx.fill();
-  rr(sbX, seasonY + seasonH / 2 - 3, sbW * (Season.d.tier >= SEASON_TIERS ? 1 : Season.tierProgress()), 6, 3);
+  rr(sbX, seasonY + seasonH / 2 - 3 * S, sbW * (Season.d.tier >= SEASON_TIERS ? 1 : Season.tierProgress()), 6 * S, 3 * S);
   ctx.fillStyle = '#a76bff';
   ctx.fill();
-  text('▸', mX + mW - 16, seasonY + seasonH / 2, 14, '#cdb4ff', 800, 0, 'center');
+  text('▸', mX + mW - 16 * S, seasonY + seasonH / 2, 14 * S, '#cdb4ff', 800, 0, 'center');
   btn('homeseason', mX, seasonY, mW, seasonH, () => { openSeason('home'); state.scene = 'season'; });
 
   // ---- DAILY MISSIONS PANEL (between the season banner and the NEXT line) ----
-  const mTop = seasonY + seasonH + 10;
-  const mBottom = nextY - 14;
-  const mH = Math.max(90, mBottom - mTop);
+  const { y: mTop, h: mH } = L.missions;
   card(mX, mTop, mW, mH);
   const bx = W * 0.1;
   const bw = W * 0.8;
-  text('DAILY MISSIONS', bx, mTop + 18, 10.5, '#cdd8ff', 800, 0, 'left', "'Unbounded'");
-  iconClock(bx + bw - 56, mTop + 18, 5, '#8fa0c8');
-  text(fmtHMS(msToMidnight()), bx + bw, mTop + 18, 10, '#9fb0e0', 700, 0, 'right');
+  const headY = mTop + 18 * S;
+  text('DAILY MISSIONS', bx, headY, 10.5 * S, '#cdd8ff', 800, 0, 'left', "'Unbounded'");
+  iconClock(bx + bw - 56 * S, headY, 5 * S, '#8fa0c8');
+  text(fmtHMS(msToMidnight()), bx + bw, headY, 10 * S, '#9fb0e0', 700, 0, 'right');
   const missions = Daily.missions();
-  const innerTop = mTop + 30;
-  const rowH = (mH - 36) / missions.length;
+  const innerTop = mTop + 30 * S;
+  const rowH = (mH - 36 * S) / missions.length;
+  const chip = 22 * S;
   for (let i = 0; i < missions.length; i++) {
     const m = missions[i];
     const g = Daily.goalFor(m);
@@ -774,34 +878,35 @@ export function renderHome(dt: number): void {
     const pct = clamp(m.prog / g.t, 0, 1);
     const tierCol = m.done ? '#9be35a' : (g.tier === 'hard' ? '#ff4d8d' : g.tier === 'med' ? '#2ff3e0' : '#9be35a');
     // icon chip
-    rr(bx, y - 11, 22, 22, 6);
+    rr(bx, y - chip / 2, chip, chip, 6 * S);
     ctx.fillStyle = hexA(tierCol, m.done ? 0.22 : 0.12);
     ctx.fill();
-    rr(bx, y - 11, 22, 22, 6);
+    rr(bx, y - chip / 2, chip, chip, 6 * S);
     ctx.strokeStyle = hexA(tierCol, 0.4);
     ctx.lineWidth = 1;
     ctx.stroke();
-    drawMissionIcon(bx + 11, y, missionFamily(g.id), tierCol, g);
+    drawMissionIcon(bx + chip / 2, y, missionFamily(g.id), tierCol, g);
     // The one daily reroll (M4) shows a ⟳ on each incomplete row; tapping any one
     // swaps that mission for another in the same tier and spends the day's reroll.
     const rerollable = !m.done && Daily.canReroll();
-    const barRight = bx + bw - (rerollable ? 26 : 0);
-    const valX = rerollable ? bx + bw - 30 : bx + bw;
+    const barRight = bx + bw - (rerollable ? 26 * S : 0);
+    const valX = rerollable ? bx + bw - 30 * S : bx + bw;
+    const labelX = bx + chip + 8 * S;
     // label + value
-    text((m.done ? '✓ ' : '') + g.text(g.t), bx + 30, y - 3, 11, m.done ? '#9be35a' : '#dfe7ff', 600, 0, 'left');
+    text((m.done ? '✓ ' : '') + g.text(g.t), labelX, y - 3 * S, 11 * S, m.done ? '#9be35a' : '#dfe7ff', 600, 0, 'left');
     text(m.done ? '+' + g.reward + ' ◎' : Math.min(m.prog, g.t) + '/' + g.t,
-      valX, y - 3, 10.5, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
+      valX, y - 3 * S, 10.5 * S, m.done ? '#9be35a' : '#ffe39b', 800, 0, 'right');
     if (rerollable) {
-      iconReroll(bx + bw - 9, y - 3, '#9fb0e0');
-      btn('dreroll' + i, bx + bw - 22, y - 14, 26, 26, () => {
+      iconReroll(bx + bw - 9 * S, y - 3 * S, '#9fb0e0');
+      btn('dreroll' + i, bx + bw - 22 * S, y - 14 * S, 26 * S, 26 * S, () => {
         if (Daily.reroll(i)) SFX.click();
       });
     }
     // bar
-    rr(bx + 30, y + 8, barRight - (bx + 30), 5, 3);
+    rr(labelX, y + 8 * S, barRight - labelX, 5 * S, 3 * S);
     ctx.fillStyle = 'rgba(255,255,255,.07)';
     ctx.fill();
-    rr(bx + 30, y + 8, (barRight - (bx + 30)) * pct, 5, 3);
+    rr(labelX, y + 8 * S, (barRight - labelX) * pct, 5 * S, 3 * S);
     ctx.fillStyle = tierCol;
     if (!m.done) { ctx.shadowColor = tierCol; ctx.shadowBlur = glowFX(6); }
     ctx.fill();
@@ -809,17 +914,16 @@ export function renderHome(dt: number): void {
   }
 
   // ---- NEXT line ----
-  text('NEXT  ·  ' + nextGoalLine(), cx, nextY, 12, '#ffe39b', 700, 6);
+  text('NEXT  ·  ' + nextGoalLine(), cx, L.nextY, 12 * S, '#ffe39b', 700, 6);
 
   // ---- PLAY (the money shot) ----
-  const pw = W * 0.66;
-  const pxx = W / 2 - pw / 2;
+  const { x: pxx, y: playY, w: pw, h: playH } = L.play;
   const pulse = 1 + Math.sin(homeT * 3) * 0.02;
   ctx.save();
-  ctx.translate(W / 2, playY + playH / 2);
+  ctx.translate(cx, playY + playH / 2);
   ctx.scale(pulse, pulse);
-  ctx.translate(-W / 2, -(playY + playH / 2));
-  glossButton(pxx, playY, pw, playH, sk.c, { r: 16, shimmer: homeT * 0.3 });
+  ctx.translate(-cx, -(playY + playH / 2));
+  glossButton(pxx, playY, pw, playH, sk.c, { r: 16 * S, shimmer: homeT * 0.3 });
   ctx.restore();
   // side chevrons (Coil moves up → "go")
   ctx.save();
@@ -828,34 +932,31 @@ export function renderHome(dt: number): void {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   for (const s of [-1, 1]) {
-    const axc = W / 2 + s * (pw / 2 + 18);
+    const axc = cx + s * (pw / 2 + 18 * S);
     ctx.beginPath();
-    ctx.moveTo(axc - s * 4, playY + playH / 2 - 7);
-    ctx.lineTo(axc + s * 4, playY + playH / 2);
-    ctx.lineTo(axc - s * 4, playY + playH / 2 + 7);
+    ctx.moveTo(axc - s * 4 * S, playY + playH / 2 - 7 * S);
+    ctx.lineTo(axc + s * 4 * S, playY + playH / 2);
+    ctx.lineTo(axc - s * 4 * S, playY + playH / 2 + 7 * S);
     ctx.stroke();
   }
   ctx.restore();
-  text('PLAY', W / 2, playY + playH / 2, 23, '#04030a', 800, 0, 'center', "'Unbounded'");
+  text('PLAY', cx, playY + playH / 2, 23 * S, '#04030a', 800, 0, 'center', "'Unbounded'");
   btn('play', pxx, playY, pw, playH, () => onPlayRequested());
 
   // ---- secondary row: DAILY ✦ · ZEN · SHOP ----
-  const sw = W * 0.84;
-  const sxx = W / 2 - sw / 2;
-  const sgap = 8;
-  const third = (sw - sgap * 2) / 3;
+  const { x: sxx, y: secY, h: secH, gap: sgap, third } = L.sec;
   const dm = DailyRun.topMedal();
   const fresh = !DailyRun.played();
   secondaryTile(sxx, secY, third, secH, fresh ? '#ffd24a' : (dm ? dm.c : '#9fb0e0'),
-    'DAILY', DailyRun.played() ? 'Best ' + DailyRun.d.best + ' m' : 'New today!', fresh, iconCalendar);
+    'DAILY', DailyRun.played() ? 'Best ' + DailyRun.d.best + ' m' : 'New today!', fresh, iconCalendar, S);
   btn('daily', sxx, secY, third, secH, () => onDailyRequested());
 
   const zx = sxx + third + sgap;
-  secondaryTile(zx, secY, third, secH, '#9be35a', 'ZEN', 'No fail · relax', false, iconLotus);
+  secondaryTile(zx, secY, third, secH, '#9be35a', 'ZEN', 'No fail · relax', false, iconLotus, S);
   btn('zen', zx, secY, third, secH, () => onZenRequested());
 
   const sx3 = sxx + (third + sgap) * 2;
-  secondaryTile(sx3, secY, third, secH, sk.t, 'SHOP', '◎ ' + Profile.coins, false, iconCart);
+  secondaryTile(sx3, secY, third, secH, sk.t, 'SHOP', '◎ ' + Profile.coins, false, iconCart, S);
   btn('shop', sx3, secY, third, secH, () => {
     Telemetry.shopOpen();
     state.scene = 'shop';
