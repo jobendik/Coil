@@ -7,7 +7,7 @@ import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
 import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
 import { renderPlay, setZenExitHandler } from './scenes/play';
-import { renderShop, shopDown, shopMove, shopUp, shopResetScroll } from './scenes/shop';
+import { renderShop, shopDown, shopMove, shopUp, shopResetScroll, shopBackScene } from './scenes/shop';
 import { renderAscent, ascentDown, ascentMove, ascentUp, setAscentReplay, openAscent } from './scenes/ascent';
 import { renderSeason, seasonDown, seasonMove, seasonUp } from './scenes/season';
 import { renderTease, teaseTap } from './scenes/tease';
@@ -145,7 +145,7 @@ function primaryAction(): void {
     startPlay(false);
   } else if (state.scene === 'shop') {
     shopResetScroll();
-    state.scene = 'home';
+    state.scene = shopBackScene();
   }
 }
 

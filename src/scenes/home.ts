@@ -7,6 +7,7 @@ import { DailyRun } from '../game/dailyrun';
 import { Vault } from '../game/vault';
 import { Season } from '../game/season';
 import { openSeason } from './season';
+import { openShop } from './shop';
 import { Event } from '../game/events';
 import { SFX } from '../core/audio';
 import { glowFX, TAU, clamp, rr, text, hexA, mixHex } from '../core/utils';
@@ -959,6 +960,7 @@ export function renderHome(dt: number): void {
   secondaryTile(sx3, secY, third, secH, sk.t, 'SHOP', '◎ ' + Profile.coins, false, iconCart, S);
   btn('shop', sx3, secY, third, secH, () => {
     Telemetry.shopOpen();
+    openShop('home');
     state.scene = 'shop';
   });
 
