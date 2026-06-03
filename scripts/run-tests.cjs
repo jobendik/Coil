@@ -33,6 +33,10 @@ global.performance = { now: () => 0 };
 global.requestAnimationFrame = () => 0;
 global.navigator = { vibrate() {}, userAgent: 'node' };
 global.Audio = function () { return { play() {}, pause() {}, addEventListener() {} }; };
+// Image: the menu backdrop (scenes/menubg.ts) instantiates one at module load.
+// Stub it so importing that chain in a test is a no-op (it never decodes; drawMenuBg
+// short-circuits on !ready).
+global.Image = function () { return { onload: null, onerror: null, width: 0, height: 0, set src(_v) { /* never decodes in node */ } }; };
 
 const root = path.resolve(__dirname, '..');
 // Call the esbuild native binary directly. In esbuild 0.17+ the file at
@@ -48,7 +52,7 @@ for (const t of tests) {
   const src = path.join(__dirname, t);
   const out = path.join(os.tmpdir(), t.replace(/\.ts$/, '.cjs'));
   execFileSync(esbuild, [src, '--bundle', '--format=cjs', '--platform=node',
-    '--loader:.mp3=text', '--loader:.css=text', '--outfile=' + out], { stdio: 'inherit' });
+    '--loader:.mp3=text', '--loader:.css=text', '--loader:.webp=text', '--outfile=' + out], { stdio: 'inherit' });
   console.log('\n▶ ' + t);
   try {
     require(out);
