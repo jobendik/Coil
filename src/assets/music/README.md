@@ -38,6 +38,9 @@ and 2–3 gameplay tracks so the rotation has something to shuffle.
   The current single track is ~4 MB — aim smaller for the rotation tracks.
 - **Loudness-matched** to the existing track and to each other, so crossfades and
   swaps aren't jarring (CrazyGames quality bar: consistent, comfortable volume).
+- **No embedded cover art / ID3 tags.** The game streams audio only (canvas, no
+  player UI), so an attached picture is dead weight. Strip it losslessly — e.g.
+  `ffmpeg -i in.mp3 -map 0:a -c:a copy -map_metadata -1 out.mp3` (audio untouched).
 
 ## ⚠️ Download budget (important)
 All music is lazy-loaded after the first tap, so it never blocks first paint — but
