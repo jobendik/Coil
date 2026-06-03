@@ -88,8 +88,10 @@ let prevVol = 0;
 
 function trackEl(i: number): HTMLAudioElement | null {
   if (elCache[i]) return elCache[i];
+  const url = TRACKS[i];
+  if (!url) return null;   // out-of-range index → never construct `new Audio(undefined)`
   try {
-    const e = new Audio(TRACKS[i]);
+    const e = new Audio(url);
     e.loop = true;
     e.preload = 'auto';
     e.volume = 0;

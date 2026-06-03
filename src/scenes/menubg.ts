@@ -8,6 +8,10 @@ import { view } from '../core/canvas';
 const img = new Image();
 let ready = false;
 img.onload = () => { ready = true; };
+// If the backdrop fails to decode (network, or a browser without WebP), keep
+// ready=false so drawMenuBg() no-ops and callers fall back to the drawBG()
+// gradient — never a broken-image flash. (Image errors fire here, not as throws.)
+img.onerror = () => { ready = false; };
 img.src = bgUrl;
 
 /** Draw the backdrop scaled to COVER the canvas (centred crop, any aspect),
