@@ -1,4 +1,4 @@
-import { settings } from '../settings';
+import { sfxMuted } from '../settings';
 
 type WebkitWindow = Window & { webkitAudioContext?: typeof AudioContext };
 
@@ -35,7 +35,7 @@ export function tone(
   vol = 0.16,
   slide = 0,
 ): void {
-  if (settings.muted) return;
+  if (sfxMuted()) return;
   const a = ac();
   if (!a) return;
   const t = a.currentTime;
@@ -54,7 +54,7 @@ export function tone(
 
 const _noiseBufs: Record<number, AudioBuffer> = {};
 export function noise(d = 0.18, vol = 0.22, lp = 1600): void {
-  if (settings.muted) return;
+  if (sfxMuted()) return;
   const a = ac();
   if (!a) return;
   const n = Math.floor(a.sampleRate * d);
@@ -85,7 +85,7 @@ export function noise(d = 0.18, vol = 0.22, lp = 1600): void {
 /* swelling band-passed noise — a "crowd cheer / applause" texture for big wins */
 export function cheerSwell(d = 0.55, vol = 0.16): void {
   if (Samples.play('cheer', 0.6)) return;
-  if (settings.muted) return;
+  if (sfxMuted()) return;
   const a = ac();
   if (!a) return;
   const n = Math.floor(a.sampleRate * d);
@@ -112,7 +112,7 @@ export function cheerSwell(d = 0.55, vol = 0.16): void {
 /* bright noise cymbal swell for fanfares */
 export function cymbal(d = 0.4): void {
   if (Samples.play('cymbal', 0.45)) return;
-  if (settings.muted) return;
+  if (sfxMuted()) return;
   const a = ac();
   if (!a) return;
   const n = Math.floor(a.sampleRate * d);
@@ -135,7 +135,7 @@ export function cymbal(d = 0.4): void {
 /* layered big-win cue: sparkle shimmer + major-triad chord + low thump (per casino spec) */
 export function bigWinAudio(intensity: number): void {
   if (Samples.play('bigwin', Math.min(1, 0.7 + intensity * 0.12))) return;
-  if (settings.muted) return;
+  if (sfxMuted()) return;
   const a = ac();
   if (!a) return;
   const spk = Math.round(3 + intensity * 5);
@@ -220,7 +220,7 @@ const Samples = {
    *  so the caller skips the procedural fallback. `rate` > 1 brightens playback
    *  (mirrors the combo pitch ramps). */
   play(name: string, vol = 0.9, rate = 1): boolean {
-    if (settings.muted) return true;
+    if (sfxMuted()) return true;
     const arr = this.buf[name];
     if (!arr || !arr.length) return false;
     const a = ac();
@@ -327,7 +327,7 @@ export const SFX = {
   /* a tumble of coins into the tray */
   coinCascade(n = 6): void {
     if (Samples.play('cascade', 0.8)) return;
-    if (settings.muted) return;
+    if (sfxMuted()) return;
     n = Math.min(n, 12);
     for (let i = 0; i < n; i++) setTimeout(() => tone(720 + i * 85, 0.05, 'square', 0.07, 140), i * 32);
   },
@@ -340,7 +340,7 @@ export const SFX = {
   /* ascending anticipation riser before a payout reveal */
   riser(dur = 0.7): void {
     if (Samples.play('riser', 0.8)) return;
-    if (settings.muted) return;
+    if (sfxMuted()) return;
     const a = ac();
     if (!a) return;
     const t = a.currentTime;

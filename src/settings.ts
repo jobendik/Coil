@@ -26,6 +26,17 @@ export function applyMotion(): void {
 }
 applyMotion();
 
+// CrazyGames platform mute (SDK `game.settings.muteAudio`). This is the player
+// muting the embed via CrazyGames' own chrome, NOT an in-game toggle — so it is
+// never persisted and never reflected in the audio menu. While set it silences
+// BOTH SFX and music on top of the player's own preferences; lifting it restores
+// exactly what they had. Driven by core/cg's settings-change listener.
+let _sdkMuted = false;
+export function setSdkMuted(v: boolean): void { _sdkMuted = v; }
+export function isSdkMuted(): boolean { return _sdkMuted; }
+/** SFX gate: silenced by the player's SFX mute OR a platform mute. */
+export function sfxMuted(): boolean { return settings.muted || _sdkMuted; }
+
 export function setMuted(v: boolean): void {
   settings.muted = v;
   Store.set('coil_muted', v);

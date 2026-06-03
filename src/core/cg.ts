@@ -1,4 +1,4 @@
-import { settings, setMuted } from '../settings';
+import { settings, setMuted, setSdkMuted } from '../settings';
 import { Store } from './store';
 import { LEADERBOARDS_ENABLED, LEADERBOARD_ID, DAILY_LEADERBOARD_ID } from '../config';
 
@@ -14,10 +14,23 @@ interface CGAdHandlers {
   adFinished?: () => void;
   adError?: () => void;
 }
+interface CGSettings {
+  muteAudio?: boolean;
+  disableChat?: boolean;
+}
 interface CGGameApi {
   gameplayStart: () => void;
   gameplayStop: () => void;
   happytime: () => void;
+  // v3 loading handshake — present on the real SDK, optional so a partial mock
+  // (or an older build) degrades to a no-op rather than a crash.
+  loadingStart?: () => void;
+  loadingStop?: () => void;
+  // v3 platform settings (audio mute / chat). `settings` is the current snapshot;
+  // the listener fires whenever the player toggles them in the CrazyGames chrome.
+  settings?: CGSettings;
+  addSettingsChangeListener?: (fn: (s: CGSettings) => void) => void;
+  removeSettingsChangeListener?: (fn: (s: CGSettings) => void) => void;
 }
 interface CGAdApi {
   requestAd: (kind: 'midgame' | 'rewarded', handlers: CGAdHandlers) => void;
@@ -46,6 +59,13 @@ class CGState {
   private wasMuted = false;
   private pauseHook: Hook | null = null;
   private initializing = false;
+  // v3 loading-handshake state. The rAF loop (and so the first rendered frame)
+  // can run BEFORE init() resolves, so loadingDone() may be requested before the
+  // SDK is ready; we latch that intent and honour it the instant loadingStart
+  // fires, guaranteeing exactly one balanced start→stop pair.
+  private loadStarted = false;
+  private loadStopped = false;
+  private wantLoadStop = false;
 
   bindPauseHook(fn: Hook): void {
     this.pauseHook = fn;
@@ -65,16 +85,53 @@ class CGState {
         this.ready = true;
         // Cross-device save: if this device is fresh but the player has a cloud
         // save (logged-in, returning on a new device), pull it down and reload
-        // so every already-imported state object re-reads real progress.
+        // so every already-imported state object re-reads real progress. Bail
+        // before starting a loading bracket — the reload restarts init cleanly.
         if (Store.hydrateFromCloud()) {
           try { location.reload(); } catch { /* non-browser */ }
+          return;
         }
+        // Tell the platform loading has begun (it shows its own splash until we
+        // signal loadingStop from the first rendered frame, via loadingDone()).
+        this.startLoading();
+        // Honour the player's current platform audio mute, then track changes.
+        this.applyMute(this.sdk.game.settings);
+        try { this.sdk.game.addSettingsChangeListener?.(this.onSettingsChange); } catch { /* no-op */ }
       }
     } catch {
       this.ready = false;
     } finally {
       this.initializing = false;
     }
+  }
+
+  // ---- v3 loading handshake ----------------------------------------------
+  private startLoading(): void {
+    if (this.loadStarted) return;
+    this.loadStarted = true;
+    try { this.sdk?.game.loadingStart?.(); } catch { /* no-op */ }
+    if (this.wantLoadStop) this.stopLoading();   // first frame already painted
+  }
+
+  /** Signal the game is interactive (hides the CrazyGames loading splash). Called
+   *  from the first rendered frame. Order- and repeat-safe: if it lands before the
+   *  SDK finished init, the stop is deferred until loadingStart so the pair is
+   *  never unbalanced; once stopped, further calls are ignored. */
+  loadingDone(): void {
+    if (!this.loadStarted) { this.wantLoadStop = true; return; }
+    this.stopLoading();
+  }
+
+  private stopLoading(): void {
+    if (this.loadStopped) return;
+    this.loadStopped = true;
+    try { this.sdk?.game.loadingStop?.(); } catch { /* no-op */ }
+  }
+
+  // ---- v3 platform audio mute --------------------------------------------
+  private onSettingsChange = (s: CGSettings): void => { this.applyMute(s); };
+  private applyMute(s?: CGSettings): void {
+    setSdkMuted(!!s?.muteAudio);   // SFX gate reads this per-call; music picks it up next upd()
   }
 
   gameplayStart(): void {

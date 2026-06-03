@@ -1,13 +1,13 @@
 import musicUrl from '../assets/background_music.mp3';
-import { settings } from '../settings';
+import { settings, isSdkMuted } from '../settings';
 import { ac } from './audio';
 import { clamp } from './utils';
 
 /* Looping background-music bed. Streamed via HTMLAudioElement(s) (kept separate
    from the WebAudio SFX path). Gated by its OWN `musicMuted` setting — fully
-   independent of the SFX mute — plus tab visibility, and hard-paused during ads
-   via Music.pause() from the loop's pause hook. Volume fades in/out so toggles
-   and ad breaks aren't jarring.
+   independent of the SFX mute — plus tab visibility and the CrazyGames platform
+   mute (isSdkMuted), and hard-paused during ads via Music.pause() from the loop's
+   pause hook. Volume fades in/out so toggles and ad breaks aren't jarring.
 
    THREE BEDS — a sense of place, driven by setScene():
      • LOBBY  — home / shop. A calm, STABLE menu theme; held the whole time the
@@ -281,7 +281,7 @@ export const Music = {
   upd(dt: number): void {
     if (mode === 'play' && !zen) gpElapsed += dt;   // count actual gameplay only
 
-    const allow = !settings.musicMuted && !document.hidden;
+    const allow = !settings.musicMuted && !isSdkMuted() && !document.hidden;
     // Zen ambient (only while in the Zen bed and music is allowed).
     Zen.upd(dt, allow && zen);
 
