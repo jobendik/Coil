@@ -72,6 +72,16 @@ const NEBULA = (() => {
 let _bgKey = '';
 let _bgShade: CanvasGradient | null = null;
 let _bgScrim: CanvasGradient | null = null;
+// Sky (palette) gradient cache — see drawBG. Rebuilt only when the world palette,
+// the quantized zone-blend, or the canvas size changes, instead of every frame.
+let _skyKey = '';
+let _skyGrad: CanvasGradient | null = null;
+// Hoisted line-dash patterns — setLineDash([...]) allocates a fresh array each
+// call, and these sit in per-frame draw paths (constellations, target beacon,
+// goal markers). Module constants make them zero-allocation.
+const DASH_CONSTEL = [4, 5];
+const DASH_BEACON = [3, 9];
+const DASH_GOAL = [6, 9];
 function bgGrads(W: number, H: number): { shade: CanvasGradient; scrim: CanvasGradient } {
   const key = W + 'x' + H;
   if (key !== _bgKey || !_bgShade || !_bgScrim) {
@@ -105,24 +115,34 @@ export function drawBG(): void {
       tt = clamp((h - from) / span, 0, 1);
     }
   }
-  const mix = (a: string, b: string): string => {
-    const pa = parseInt(a.slice(1), 16);
-    const pb = parseInt(b.slice(1), 16);
-    const r = Math.round(lerp((pa >> 16) & 255, (pb >> 16) & 255, tt));
-    const g = Math.round(lerp((pa >> 8) & 255, (pb >> 8) & 255, tt));
-    const bl = Math.round(lerp(pa & 255, pb & 255, tt));
-    return `rgb(${r},${g},${bl})`;
-  };
   // The equipped WORLD owns the palette (bg → alt blended by zone progress tt).
   // Default world == the classic Neon.
   const wld = world();
   const bg0 = wld.bg;
   const bg1 = wld.alt;
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, mix(bg0[0], bg1[0]));
-  grad.addColorStop(0.5, mix(bg0[1], bg1[1]));
-  grad.addColorStop(1, mix(bg0[2], bg1[2]));
-  ctx.fillStyle = grad;
+  // Cache the full-screen sky gradient: it only changes with the world palette,
+  // the zone-blend tt (which moves slowly with height), or a resize — so building
+  // a fresh CanvasGradient + 3 colour strings every frame is pure GC churn. The
+  // key quantizes tt to 1/64; the resulting colour step is sub-perceptual.
+  const ttq = Math.round(tt * 64);
+  const skyKey = bg0[0] + bg0[1] + bg0[2] + '|' + bg1[0] + bg1[1] + bg1[2] + '|' + ttq + '|' + W + 'x' + H;
+  if (skyKey !== _skyKey || !_skyGrad) {
+    const mix = (a: string, b: string): string => {
+      const pa = parseInt(a.slice(1), 16);
+      const pb = parseInt(b.slice(1), 16);
+      const r = Math.round(lerp((pa >> 16) & 255, (pb >> 16) & 255, tt));
+      const g = Math.round(lerp((pa >> 8) & 255, (pb >> 8) & 255, tt));
+      const bl = Math.round(lerp(pa & 255, pb & 255, tt));
+      return `rgb(${r},${g},${bl})`;
+    };
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, mix(bg0[0], bg1[0]));
+    grad.addColorStop(0.5, mix(bg0[1], bg1[1]));
+    grad.addColorStop(1, mix(bg0[2], bg1[2]));
+    _skyGrad = grad;
+    _skyKey = skyKey;
+  }
+  ctx.fillStyle = _skyGrad;
   ctx.fillRect(0, 0, W, H);
   const cam = state.G?.cameraY ?? 0;
   const bgT = state.G?.t ?? performance.now() * 0.001;
@@ -480,7 +500,7 @@ function drawConstellations(): void {
       ctx.globalAlpha = 0.45;
       ctx.strokeStyle = col;
       ctx.lineWidth = 1.4;
-      ctx.setLineDash([4, 5]);
+      ctx.setLineDash(DASH_CONSTEL);
       ctx.shadowColor = col;
       ctx.shadowBlur = glowFX(6);
       ctx.beginPath();
@@ -628,7 +648,7 @@ function drawTargetBeacon(): void {
   ctx.stroke();
   ctx.globalAlpha = 0.6;
   ctx.lineWidth = 1.4;
-  ctx.setLineDash([3, 9]);
+  ctx.setLineDash(DASH_BEACON);
   ctx.beginPath();
   ctx.arc(x, y, tgt.r + 18 + pulse * 2, G.t * 1.1, G.t * 1.1 + TAU * 0.72);
   ctx.stroke();
@@ -1470,7 +1490,7 @@ function drawGoalMarkers(): void {
     ctx.globalAlpha = 0.42;
     ctx.strokeStyle = c;
     ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 9]);
+    ctx.setLineDash(DASH_GOAL);
     ctx.shadowColor = c;
     ctx.shadowBlur = glowFX(6);
     ctx.beginPath();

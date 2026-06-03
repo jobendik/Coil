@@ -427,11 +427,23 @@ export function update(dt: number): void {
     }
   }
 
-  while (G.lastNodeY < pl.wy + H * 1.5) genNode();
+  // genNode always advances lastNodeY by >= one gap, so this is logically bounded;
+  // the guard is belt-and-braces against a frame-time blowup (or a corrupt non-
+  // finite pl.wy, where `< Infinity` would otherwise spin and grow nodes without
+  // limit). 24 covers H*1.5 / minGap even on a tall tablet; normal play exits far
+  // sooner, and any shortfall self-corrects next frame.
+  let genGuard = 0;
+  while (G.lastNodeY < pl.wy + H * 1.5 && genGuard++ < 24) genNode();
   // In Zen the void never rises, so cull below the camera instead of the void line.
   const cullY = G.zen ? G.cameraY - 200 : G.voidY - 120;
-  G.nodes = G.nodes.filter((n) => n.wy > cullY);
-  G.sparks = G.sparks.filter((s) => !s.got && s.wy > cullY);
+  // In-place, order-preserving compaction instead of allocating a brand-new array
+  // every physics tick (60 Hz) — identical result, zero per-tick garbage.
+  let nw = 0;
+  for (let i = 0; i < G.nodes.length; i++) { if (G.nodes[i].wy > cullY) G.nodes[nw++] = G.nodes[i]; }
+  G.nodes.length = nw;
+  let sw = 0;
+  for (let i = 0; i < G.sparks.length; i++) { const s = G.sparks[i]; if (!s.got && s.wy > cullY) G.sparks[sw++] = s; }
+  G.sparks.length = sw;
 
   if (G.tut >= 0) {
     G.tutT += dt;
