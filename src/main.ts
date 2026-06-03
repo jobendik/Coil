@@ -30,6 +30,12 @@ Telemetry.session();
 // never banked). Idempotent — only grants what isn't already owned.
 claimEarnedUnlocks();
 
+// Swallow benign unhandled promise rejections — autoplay and ad-SDK promises
+// reject when blocked (Chrome/iOS), and an uncaught rejection can surface as an
+// error overlay inside some embeds. preventDefault keeps it quiet without masking
+// real bugs (each such promise already has its own .catch where it matters).
+window.addEventListener('unhandledrejection', (e) => { e.preventDefault(); });
+
 initCanvas();
 
 // Drive the frame's height from the *visual* viewport so the canvas is always sized
@@ -223,6 +229,18 @@ let fxCheckT = 0;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
+  try {
+    step(now);
+  } catch {
+    // Last-resort resilience for a mass-market launch: one unexpected throw in
+    // update/render must not freeze the game. rAF is already re-armed above, so
+    // the loop survives; reset the transform so a throw mid-draw (between a
+    // ctx.save/restore) can't leave the matrix skewed for the next frame.
+    try { view.ctx.setTransform(view.DPR, 0, 0, view.DPR, 0, 0); } catch { /* ctx lost */ }
+  }
+}
+
+function step(now: number): void {
   if (paused) {
     last = now;
     return;

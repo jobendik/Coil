@@ -24,7 +24,7 @@ export const LOGIN_REWARDS = [50, 100, 150, 200, 300, 400, 500];
 
 export const Login = {
   lastClaim: Store.get<string>('coil_login_date', ''),
-  day: Store.get<number>('coil_login_day', 0),    // last claimed day in the 1..7 cycle
+  day: Store.num('coil_login_day', 0),    // last claimed day in the 1..7 cycle
 
   available(): boolean {
     return this.lastClaim !== todayKey();
@@ -109,7 +109,7 @@ export const Wheel = {
 
 /* ---------- bonus chests (earned via dailies / milestones) ---------- */
 export const Chest = {
-  count: Store.get<number>('coil_chests', 0),
+  count: Store.num('coil_chests', 0),
   lastDailyGrant: Store.get<string>('coil_chest_daily', ''),
 
   /** Add chests to the player's stash (e.g. on completing all dailies). */

@@ -8,8 +8,14 @@ import type { DailyMedal } from '../types';
    from the daily *missions* (cumulative tasks); this is a single shared run. */
 
 function dayKey(): string {
+  // UTC, deliberately: the date-seeded route must be IDENTICAL for every player
+  // worldwide on the same calendar day. Local time would seed players in
+  // different timezones onto different routes (and let someone cross local
+  // midnight to re-attempt the same day), breaking the shared-route fairness the
+  // Daily leaderboard depends on. Personal-cadence dates (streak in profile.ts,
+  // login/wheel in rewards.ts) stay LOCAL on purpose — they're not competitive.
   const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}`;
 }
 
 function hashStr(s: string): number {
@@ -41,6 +47,8 @@ export const DailyRun = {
       Store.set('coil_dailyrun', this.d);
     } else {
       this.d = stored;
+      // Guard a pre-`claimed` save so finish()'s this.d.claimed[m.id] can't throw.
+      if (!this.d.claimed || typeof this.d.claimed !== 'object') this.d.claimed = {};
     }
   },
 

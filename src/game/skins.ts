@@ -2,7 +2,7 @@ import { Store } from '../core/store';
 import { SKINS, MILESTONE_SKINS } from '../config';
 import type { Skin } from '../types';
 
-export const Owned: string[] = Store.get<string[]>('coil_skins', ['cyan']);
+export const Owned: string[] = Store.arr<string>('coil_skins', ['cyan']);
 // Always keep the free starter owned (mirrors the 'line'/'neon'/'none' self-heal in
 // collection.ts/accessories.ts) so a corrupted save can't strand the default character.
 if (!Owned.includes('cyan')) Owned.unshift('cyan');

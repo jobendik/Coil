@@ -7,10 +7,10 @@ import type { Trail, World } from '../types';
    persisted. Trails restyle the flight ribbon; worlds restyle the backdrop,
    void colour, and node accent. Neither changes physics. */
 
-export const OwnedTrails: string[] = Store.get<string[]>('coil_trails', ['line']);
+export const OwnedTrails: string[] = Store.arr<string>('coil_trails', ['line']);
 if (!OwnedTrails.includes('line')) OwnedTrails.unshift('line');
 
-export const OwnedWorlds: string[] = Store.get<string[]>('coil_worlds', ['neon']);
+export const OwnedWorlds: string[] = Store.arr<string>('coil_worlds', ['neon']);
 if (!OwnedWorlds.includes('neon')) OwnedWorlds.unshift('neon');
 
 export const collectionState = {

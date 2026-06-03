@@ -11,7 +11,7 @@ import { clamp } from '../core/utils';
    ========================================================================= */
 
 export const Career = {
-  claimed: Store.get<Record<string, number>>('coil_career', {}),
+  claimed: Store.obj<Record<string, number>>('coil_career', {}),
 
   valueFor(kind: CareerMilestone['kind']): number {
     if (kind === 'height') return Profile.lifetimeHeight;

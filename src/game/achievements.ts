@@ -19,7 +19,7 @@ export const ACH: Achievement[] = [
 ];
 
 export const Achievements = {
-  unlocked: Store.get<Record<string, number>>('coil_ach', {}),
+  unlocked: Store.obj<Record<string, number>>('coil_ach', {}),
 
   /** Returns the list of achievements newly satisfied by this run summary. */
   check(r: AchSummary): Achievement[] {

@@ -243,6 +243,12 @@ export const Music = {
   start(): void {
     started = true;
     applyBed();
+    // Kick the chosen element off SYNCHRONOUSLY, inside this gesture. iOS Safari
+    // only honours HTMLAudioElement.play() initiated within the user-gesture
+    // callstack; deferring the first play() to the per-frame upd() (which runs in
+    // rAF, OUTSIDE the gesture) leaves the music bed permanently blocked on iOS.
+    // Volume is 0 here and fades up in upd(), so starting now is silent.
+    if (curIdx >= 0) trackEl(curIdx)?.play().catch(() => { /* still gated; upd() retries */ });
   },
 
   /** Hard-pause immediately — used when an ad starts or the tab is hidden. The

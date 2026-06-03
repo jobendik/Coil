@@ -20,7 +20,7 @@ const SAMPLE_DT = 0.05;       // 20 Hz
 const MAX_SAMPLES = 1600;     // ~80 s cap — plenty for any run
 
 export const Echo = {
-  best: Store.get<Sample[]>('coil_echo', []),   // persisted best-run path
+  best: Store.arr<Sample>('coil_echo', []),   // persisted best-run path
   rec: [] as Sample[],                           // current run recording
   acc: 0,
   play: [] as Sample[],                          // path being replayed this run (may be empty)

@@ -5,7 +5,7 @@ import { VAULT_MAX, VAULT_RATE, VAULT_START } from '../config';
    NOT gambling: it grows passively while you play and is won only by a genuine
    skill feat (catching a bonus node at a high combo). No betting, no paid odds. */
 export const Vault = {
-  v: Store.get<number>('coil_vault', VAULT_START),
+  v: Store.num('coil_vault', VAULT_START),
 
   save(): void {
     Store.set('coil_vault', Math.round(this.v));

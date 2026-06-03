@@ -45,12 +45,19 @@ class CGState {
   adActive = false;
   private wasMuted = false;
   private pauseHook: Hook | null = null;
+  private initializing = false;
 
   bindPauseHook(fn: Hook): void {
     this.pauseHook = fn;
   }
 
   async init(): Promise<void> {
+    // init() is invoked from BOTH module-eval and the window 'load' handler, so
+    // guard against re-entry: calling the SDK's init() twice (or hydrating +
+    // reloading twice) is undefined behaviour and risks double-registered ad
+    // handlers.
+    if (this.ready || this.initializing) return;
+    this.initializing = true;
     try {
       if (cgw.CrazyGames && cgw.CrazyGames.SDK) {
         await cgw.CrazyGames.SDK.init();
@@ -65,6 +72,8 @@ class CGState {
       }
     } catch {
       this.ready = false;
+    } finally {
+      this.initializing = false;
     }
   }
 
@@ -114,9 +123,11 @@ class CGState {
   midgame(done: () => void): void {
     if (!this.ready) { done(); return; }
     let fired = false;
+    let to: ReturnType<typeof setTimeout> | undefined;
     const fin = (): void => {
       if (fired) return;
       fired = true;
+      if (to) clearTimeout(to);
       this.resume();
       done();
     };
@@ -126,22 +137,28 @@ class CGState {
     } catch {
       fin();
     }
-    setTimeout(fin, 9000);
+    // Safety net for an SDK that never calls back. Generous (interstitials can run
+    // ~30 s) so it never fires DURING a legitimate ad — clearTimeout on a real
+    // callback means it only ever triggers when the SDK has genuinely gone silent.
+    to = setTimeout(fin, 45000);
   }
 
   /** rewarded — onReward fires ONLY on a genuine finish; failure goes through onFail. */
   rewarded(onReward: () => void, onFail?: () => void): void {
     if (!this.ready) { onFail?.(); return; }
     let done = false;
+    let to: ReturnType<typeof setTimeout> | undefined;
     const ok = (): void => {
       if (done) return;
       done = true;
+      if (to) clearTimeout(to);
       this.resume();
       onReward();
     };
     const bad = (): void => {
       if (done) return;
       done = true;
+      if (to) clearTimeout(to);
       this.resume();
       onFail?.();
     };
@@ -151,7 +168,11 @@ class CGState {
     } catch {
       bad();
     }
-    setTimeout(bad, 12000);
+    // Was 12 s — SHORTER than many rewarded ads (15–30 s+), so it fired mid-ad and
+    // denied the reward (revive / double-coins) after a full watch. 90 s is safely
+    // past any real ad; clearTimeout on the genuine adFinished/adError keeps it a
+    // pure "SDK went silent" fallback.
+    to = setTimeout(bad, 90000);
   }
 }
 
