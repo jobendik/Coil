@@ -121,6 +121,12 @@ CG.bindPauseHook((p) => {
 
 /* ---------- input ---------- */
 let inputLock = false;
+// The scene the current pointer gesture STARTED in. Drag-scroll scenes
+// (ascent/shop/season) defer their hit-test to pointerup; without remembering the
+// down-scene, a result-screen button that switches INTO one of those scenes would
+// have its pointerup re-run the hit-test in the NEW scene and activate whatever
+// button sits at the same coords (the "tap ASCENT → flash → new run" bug).
+let downScene: typeof state.scene = state.scene;
 
 function pos(e: PointerEvent): { x: number; y: number } {
   const r = view.cv.getBoundingClientRect();
@@ -152,6 +158,7 @@ function onDown(e: PointerEvent): void {
   inputLock = true;
   setTimeout(() => { inputLock = false; }, 40);
   const { x, y } = pos(e);
+  downScene = state.scene;
   // Ascent panel uses vertical drag-to-scroll: defer the button hit-test
   // to pointerup so we can tell a tap (equip) from a drag (scroll).
   if (state.scene === 'ascent') {
@@ -196,6 +203,11 @@ view.cv.addEventListener('pointermove', (e) => {
 }, { passive: true });
 view.cv.addEventListener('pointerup', (e) => {
   const { x, y } = pos(e);
+  // Only complete a tap/drag in the scene the gesture STARTED in. If a button on
+  // pointerdown switched us into a drag-scroll scene, this release is NOT a real
+  // interaction with it — ignore it (otherwise it re-fires hitButtons in the new
+  // scene and triggers ascent's PLAY AGAIN / shop's BACK).
+  if (downScene !== state.scene) return;
   if (state.scene === 'ascent') { if (ascentUp()) hitButtons(x, y); }
   else if (state.scene === 'season') { if (seasonUp()) hitButtons(x, y); }
   else if (state.scene === 'shop') { if (shopUp()) hitButtons(x, y); }
