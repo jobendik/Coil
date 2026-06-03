@@ -82,6 +82,32 @@ let _skyGrad: CanvasGradient | null = null;
 const DASH_CONSTEL = [4, 5];
 const DASH_BEACON = [3, 9];
 const DASH_GOAL = [6, 9];
+// Parallax-nebula gradient cache. Each nebula's colour/size is fixed; only its
+// screen position moves (parallax), so the gradient is built once per nebula at
+// the ORIGIN and drawn via ctx.translate (mathematically identical to a moving-
+// centre gradient). Invalidated only when the world's accent colours change.
+let _nebKey = '';
+const _nebGrads: (CanvasGradient | null)[] = [];
+// Streak gradient cache — fully static (fixed height + alpha, hard-coded colours),
+// drawn at origin + translate. Never invalidated.
+const _streakGrads: (CanvasGradient | null)[] = [];
+// Combo-flash radial cache — fixed full-screen centre; only the world colour and
+// the 3-step alpha bucket vary, so it's value-keyed (no per-frame rebuild).
+let _comboKey = '';
+let _comboGrad: CanvasGradient | null = null;
+// Rainbow trail palette: hsl(h,90%,65%) → hex for every 1° hue, built once so the
+// rainbow trail doesn't allocate an hsl() string per segment per frame.
+function hslHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number): string => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(c * 255).toString(16).padStart(2, '0');
+  };
+  return '#' + f(0) + f(8) + f(4);
+}
+const RAINBOW_LUT: string[] = Array.from({ length: 360 }, (_, h) => hslHex(h, 90, 65));
 function bgGrads(W: number, H: number): { shade: CanvasGradient; scrim: CanvasGradient } {
   const key = W + 'x' + H;
   if (key !== _bgKey || !_bgShade || !_bgScrim) {
@@ -160,17 +186,26 @@ export function drawBG(): void {
     const cn = wld.node || '#2ff3e0';
     const cv = wld.void || '#ff3b5c';
     const nebulaN = fx.level === 'medium' ? 3 : NEBULA.length;
+    const nebKey = cn + cv;
+    if (nebKey !== _nebKey) { _nebGrads.length = 0; _nebKey = nebKey; }
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < nebulaN; i++) {
       const nb = NEBULA[i];
       const yy = (((nb.y * span + cam * nb.d) % span) + span) % span - H * 0.3;
       const cx = nb.x * W;
-      const g = ctx.createRadialGradient(cx, yy, 0, cx, yy, nb.r);
-      g.addColorStop(0, hexA(nb.c ? cv : cn, nb.a));
-      g.addColorStop(1, hexA(nb.c ? cv : cn, 0));
+      let g = _nebGrads[i];
+      if (!g) {
+        g = ctx.createRadialGradient(0, 0, 0, 0, 0, nb.r);
+        g.addColorStop(0, hexA(nb.c ? cv : cn, nb.a));
+        g.addColorStop(1, hexA(nb.c ? cv : cn, 0));
+        _nebGrads[i] = g;
+      }
+      ctx.save();
+      ctx.translate(cx, yy);
       ctx.fillStyle = g;
-      ctx.fillRect(cx - nb.r, yy - nb.r, nb.r * 2, nb.r * 2);
+      ctx.fillRect(-nb.r, -nb.r, nb.r * 2, nb.r * 2);
+      ctx.restore();
     }
     ctx.restore();
   }
@@ -193,19 +228,32 @@ export function drawBG(): void {
       const yy = (((st.y * H + cam * st.d + bgT * 20 * st.d) % H) + H) % H;
       const x = st.x * W;
       if (fx.level === 'high') {
-        const g = ctx.createLinearGradient(x, yy - st.h, x, yy);
-        g.addColorStop(0, 'rgba(47,243,224,0)');
-        g.addColorStop(0.52, `rgba(198,216,255,${st.a})`);
-        g.addColorStop(1, 'rgba(255,77,141,0)');
+        let g = _streakGrads[i];
+        if (!g) {
+          // Built once at the origin (top of streak at y=-h); drawn via translate,
+          // so it's identical to the moving-position gradient but allocation-free.
+          g = ctx.createLinearGradient(0, -st.h, 0, 0);
+          g.addColorStop(0, 'rgba(47,243,224,0)');
+          g.addColorStop(0.52, `rgba(198,216,255,${st.a})`);
+          g.addColorStop(1, 'rgba(255,77,141,0)');
+          _streakGrads[i] = g;
+        }
+        ctx.save();
+        ctx.translate(x, yy);
         ctx.strokeStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(0, -st.h);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        ctx.restore();
       } else {
         ctx.globalAlpha = st.a * 1.6;
         ctx.strokeStyle = '#c6d8ff';
+        ctx.beginPath();
+        ctx.moveTo(x, yy - st.h);
+        ctx.lineTo(x, yy);
+        ctx.stroke();
       }
-      ctx.beginPath();
-      ctx.moveTo(x, yy - st.h);
-      ctx.lineTo(x, yy);
-      ctx.stroke();
     }
     const cycle = (bgT * 0.08) % 1;
     if (fx.level === 'high' && cycle < 0.16) {
@@ -850,7 +898,7 @@ function drawPlayer(): void {
     } else if (style === 'rainbow') {
       for (let i = 1; i < pl.trail.length; i++) {
         const a = i / pl.trail.length;
-        ctx.strokeStyle = `hsl(${(G.t * 120 + i * 18) % 360},90%,65%)`;
+        ctx.strokeStyle = RAINBOW_LUT[Math.floor((G.t * 120 + i * 18) % 360)];
         ctx.globalAlpha = a * 0.6;
         ctx.lineWidth = a * visualR * 1.4;
         ctx.beginPath();
@@ -1298,11 +1346,20 @@ function drawComboFlash(): void {
   if (G.comboFlash <= 0 || fx.motion <= 0) return;
   const { ctx, W, H } = view;
   const a = G.comboFlash * fx.motion;
+  // Fixed full-screen centre; only the world colour + 3-step alpha bucket vary, so
+  // value-key the cache instead of rebuilding a radial gradient every frame the
+  // flash is active.
+  const suffix = a > 0.7 ? '88' : a > 0.4 ? '55' : '22';
+  const key = W + 'x' + H + '|' + G.comboFlashColor + suffix;
+  if (key !== _comboKey || !_comboGrad) {
+    const grd = ctx.createRadialGradient(W / 2, H / 2, H * 0.15, W / 2, H / 2, H * 0.85);
+    grd.addColorStop(0, 'rgba(0,0,0,0)');
+    grd.addColorStop(1, G.comboFlashColor + suffix);
+    _comboGrad = grd;
+    _comboKey = key;
+  }
   ctx.save();
-  const grd = ctx.createRadialGradient(W / 2, H / 2, H * 0.15, W / 2, H / 2, H * 0.85);
-  grd.addColorStop(0, 'rgba(0,0,0,0)');
-  grd.addColorStop(1, G.comboFlashColor + (a > 0.7 ? '88' : a > 0.4 ? '55' : '22'));
-  ctx.fillStyle = grd;
+  ctx.fillStyle = _comboGrad;
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
