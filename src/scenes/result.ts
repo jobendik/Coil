@@ -19,6 +19,7 @@ import { Telemetry } from '../core/telemetry';
 import { drawBG } from './play';
 import { drawMenuBg } from './menubg';
 import { openAscent } from './ascent';
+import { openShop } from './shop';
 import { MILESTONES, MILESTONE_SKINS, SEASON_TIERS, SKINS, TRAILS, WORLDS } from '../config';
 
 interface ResultBar {
@@ -581,6 +582,7 @@ export const Result = {
       text('SHOP', cx2 + third / 2, py + rh / 2, 12 * S, sk.t, 700, 0);
       btn('rshop', cx2, py, third, rh, () => {
         Telemetry.shopOpen();
+        openShop('over');
         state.scene = 'shop';
       });
 

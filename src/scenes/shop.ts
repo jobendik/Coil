@@ -31,6 +31,15 @@ let shopTab: Tab = Store.get<Tab>('coil_shop_tab', 'chars');
 // the top on tab change / re-entry. Input hooks are wired from main.ts.
 const shopScroll = { y: 0, max: 0, dragging: false, lastPY: 0, moved: 0 };
 export function shopResetScroll(): void { shopScroll.y = 0; shopScroll.dragging = false; }
+// Which screen BACK returns to — recorded when the shop is opened (home tile vs the
+// game-over SHOP button), so BACK is consistent with Ascent/Season ("go back to
+// where you came from") instead of always dumping to the main menu.
+let shopFrom: 'home' | 'over' = 'home';
+export function openShop(origin: 'home' | 'over' = 'home'): void {
+  shopFrom = origin;
+  shopResetScroll();
+}
+export function shopBackScene(): 'home' | 'over' { return shopFrom; }
 export function shopDown(py: number): void { shopScroll.dragging = true; shopScroll.lastPY = py; shopScroll.moved = 0; }
 export function shopMove(py: number): void {
   if (!shopScroll.dragging) return;
@@ -484,7 +493,7 @@ export function renderShop(): void {
   const bh = 46;
   const bx = W / 2 - bw / 2;
   const by = H - 64 - SAFE_BOTTOM;
-  btn('back', bx, by, bw, bh, () => { shopScroll.y = 0; state.scene = 'home'; });
+  btn('back', bx, by, bw, bh, () => { shopScroll.y = 0; state.scene = shopFrom; });
 
   // Clip the grid to its viewport so scrolled cards don't paint over header/footer.
   ctx.save();
