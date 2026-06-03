@@ -238,6 +238,7 @@ let fpsT = 0;
 let fpsN = 0;
 let fps = 0;
 let fxCheckT = 0;
+let firstFramePainted = false;
 
 function frame(now: number): void {
   requestAnimationFrame(frame);
@@ -363,6 +364,13 @@ function step(now: number): void {
     const nLen = state.G?.nodes.length ?? 0;
     text('fps ' + fps + '  fx ' + fx.level + '  p ' + P.a.length + '  n ' + nLen,
       8, H - 12, 11, '#5b6488', 600, 0, 'left');
+  }
+
+  // The game is interactive the instant the first real frame is on screen — tell
+  // CrazyGames so it can drop its loading splash (no-op off-platform / pre-init).
+  if (!firstFramePainted) {
+    firstFramePainted = true;
+    CG.loadingDone();
   }
 }
 
