@@ -11,12 +11,18 @@ import { settings, setSeenTut } from '../settings';
 import { skin } from './skins';
 import { Profile } from './profile';
 import { Daily } from './daily';
+import { Weekly } from './weekly';
 import { Scores } from './scores';
 import { Vault } from './vault';
 import { Achievements } from './achievements';
 import { claimEarnedUnlocks } from './unlocks';
 import { Chest } from './rewards';
 import { DailyRun } from './dailyrun';
+import { Season } from './season';
+import { Echo } from './echo';
+import { Career } from './career';
+import { Mastery } from './mastery';
+import { Event } from './events';
 import { CG } from '../core/cg';
 import { Telemetry } from '../core/telemetry';
 import { Result } from '../scenes/result';
@@ -34,8 +40,11 @@ import {
   LAND_SQUASH,
   LAUNCH,
   MILE_REWARD,
+  MILESTONE_SKINS,
   MILESTONES,
+  NEAR_MISS_ANIM,
   NEAR_MISS_RADIUS,
+  NEAR_MISS_SHOW_PX,
   NEAR_PERFECT_BAND,
   NEAR_PERFECT_MIN_COMBO,
   OMEGA,
@@ -107,7 +116,9 @@ export function update(dt: number): void {
     // keep the falling body in frame during the short death tumble
     const camDownD = pl.wy - 0.20 * H;
     if (camDownD < G.cameraY) G.cameraY = lerp(G.cameraY, camDownD, Math.min(1, dt * 6));
-    if (G.deadT > DEATH_ANIM) endRun();
+    // A near-miss death lingers a touch longer (in game-time) so the slow-mo + the
+    // honest "MISSED BY n m" land before the result screen (M2).
+    if (G.deadT > (G.nearMiss ? NEAR_MISS_ANIM : DEATH_ANIM)) endRun();
     return;
   }
 
@@ -174,12 +185,20 @@ export function update(dt: number): void {
         if (sd < n.r + pl.r) { hit('spike'); return; }
         continue;
       }
-      if (sd < n.r + pl.r + CATCH_PAD && n !== pl.lastReleased) {
+      const catchThr = n.r + pl.r + CATCH_PAD;
+      if (sd < catchThr && n !== pl.lastReleased) {
         const dx = pl.wx - n.wx;
         const dy = pl.wy - n.wy;
         const d = Math.hypot(dx, dy) || 0.001;
         latch(n, d, dx, dy);
         break;
+      }
+      // Honest near-miss tracking (M2): the surface-gap by which this fling failed
+      // to be caught by a catchable pivot — kept truthful for the "MISSED BY n m"
+      // readout on death. (The same distPointToSegment the catch test uses.)
+      if (n !== pl.lastReleased && n.wy > G.voidY) {
+        const gap = sd - catchThr;
+        if (gap < G.missGapPx) { G.missGapPx = gap; G.missNode = n; }
       }
     }
     pl.lastReleasedT += dt;
@@ -198,6 +217,9 @@ export function update(dt: number): void {
 
   G.maxY = Math.max(G.maxY, pl.wy);
   G.height = Math.max(0, Math.round((G.maxY + 90) / 12));
+  // Echo ghost (M5): sample the live orb position keyed by run-time, for the
+  // race-your-best replay. Only while alive (this point isn't reached when dead).
+  Echo.sample(G.t, pl.wx, pl.wy, dt);
   // Camera follow. Climbing: keep the player ~58% down the screen and chase up
   // briskly. Falling: the camera used to FREEZE, so a long plunge dropped the
   // player off the bottom and you couldn't see the abyss approaching. Now it
@@ -297,8 +319,11 @@ export function update(dt: number): void {
     const lead = lerp(H * 1.45, H * 0.86, clamp(G.t / 110, 0, 1));
     let rise = 26 + clamp(G.t, 0, 110) * 0.42 + Math.max(0, G.t - 110) * 0.16;
     // FRENZY flow-protection: the void eases off during the streak so a hot run
-    // isn't cut short. (Config const was previously defined but never applied.)
-    if (G.frenzyT > 0) rise *= FRENZY_VOID_EASE;
+    // isn't cut short. FAIRNESS RULING (coil-retention-plan.md M1): Flow must never
+    // grant survivability on the COMPETITIVE board, so the ease is disabled in the
+    // seeded Daily Challenge — there a hot streak boosts score/coins only, keeping
+    // the shared-route leaderboard pure skill-distance. In normal mode it stays as juice.
+    if (G.frenzyT > 0 && !G.daily) rise *= FRENZY_VOID_EASE;
     G.voidY += rise * dt;
     G.voidY = Math.max(G.voidY, G.maxY - lead);
     if (G.invuln <= 0 && pl.wy <= G.voidY + pl.r) {
@@ -606,6 +631,10 @@ export function release(): void {
   G.decayT = 0;            // flung clear of the (possibly collapsing) gate
   pl.lastReleased = pl.node;
   pl.lastReleasedT = 0;
+  // New flight → reset the honest near-miss tracker so missGapPx reflects only
+  // THIS fling's closest approach to a catchable pivot (M2).
+  G.missGapPx = 1e9;
+  G.missNode = null;
   // PERFECT is pure reward: did we fling inside the bright gate?
   // First fling of a run is ALWAYS perfect — it removes the "tap immediately, die" trap
   // that destroys retention in the first 5 seconds.
@@ -795,6 +824,18 @@ export function hit(cause: 'void' | 'fall' | 'spike' | 'collapse'): void {
   G.dead = true;
   G.deadT = 0;
   pl.latched = false;
+  // HONEST NEAR-MISS (M2): if this fatal fling sailed past a catchable pivot by
+  // only a small surface-gap, sell the death as a genuine near-miss — slow-mo the
+  // tumble (main.ts reads G.nearMiss) and read out the TRUE gap in metres. Only for
+  // skill misses ('void'/'fall'), never 'spike' (you ran into death) or 'collapse'.
+  G.nearMiss = false;
+  if ((cause === 'void' || cause === 'fall') && G.missGapPx <= NEAR_MISS_SHOW_PX) {
+    G.nearMiss = true;
+    G.missM = Math.max(1, Math.round(G.missGapPx / 12));
+    Callout.add('MISSED BY ' + G.missM + ' m', '#ffb020', false);
+    if (G.missNode) Pop.add(G.missNode.wx, sY(G.missNode.wy), 'SO CLOSE', '#ffe39b');
+    buzz([10, 30, 10]);
+  }
   // 'collapse' (an unstable gate shattering under you) is a fall for telemetry.
   Telemetry.death(cause === 'collapse' ? 'fall' : cause, G.height);
   SFX.death();
@@ -814,7 +855,9 @@ export function bankRun(): ResultData {
   const h = G.height;
   const mc = G.maxCombo;
   const perf = G.perfects;
-  const coins = G.coins;
+  // Weekly event coin multiplier (M8) applied once, at bank time, so payouts stay
+  // integer-clean. Zen still earns coins; the event boost rides along honestly.
+  const coins = Math.round(G.coins * Event.coinMult());
 
   const dH = Math.max(0, h - G.banked.h);
   const dPerf = Math.max(0, perf - G.banked.perf);
@@ -833,18 +876,33 @@ export function bankRun(): ResultData {
   Profile.addCoins(coins);
   const newBest = zen ? false : Profile.setBest(h);
   if (!zen) Profile.setBestCombo(mc);
+  // A new NORMAL-mode best becomes the Echo ghost for future runs to race (M5).
+  // Daily uses a different route, so its path must never overwrite the normal echo.
+  if (newBest && !G.daily) Echo.commit();
   const leveledUp = Profile.level() > prevLvl;
 
   let missionRewards = 0;
+  let careerDone: string[] = [];
+  let masteryUp = 0;
   if (!zen) {
     if (firstEnd) {
       missionRewards += Daily.report('runs', 1);
+      missionRewards += Weekly.report('runs', 1);
       G.dailyRunCounted = true;
     }
     missionRewards += Daily.report('perf', dPerf);
     missionRewards += Daily.report('coins', coins);
     missionRewards += Daily.report('height', h);
     missionRewards += Daily.report('combo', mc);
+    // Weekly Orders accrue from the same deltas (cumulative across the week).
+    missionRewards += Weekly.report('perf', dPerf);
+    missionRewards += Weekly.report('coins', coins);
+    missionRewards += Weekly.report('height', h);
+    missionRewards += Weekly.report('combo', mc);
+    // Lifetime totals → career milestones (M8); per-zone perfects → zone mastery.
+    Profile.addLifetime(dH, dPerf);
+    careerDone = Career.check().map((m) => m.label);
+    masteryUp = Mastery.add(G.zone, dPerf);
   }
   const dDone = missionRewards > 0;
   // Completing ALL daily missions earns a bonus chest (once per day) — a chunky
@@ -861,7 +919,10 @@ export function bankRun(): ResultData {
 
   // Daily Challenge medals (one-time per day) — only on the final bank of a daily run.
   let dailyMedals: DailyMedal[] = [];
-  if (G.daily && firstEnd) dailyMedals = DailyRun.finish(h);
+  if (G.daily && firstEnd) {
+    dailyMedals = DailyRun.finish(h);
+    CG.submitDaily(DailyRun.d.best);   // M7 wire-point: dormant until the leaderboard invite
+  }
 
   // Genuine achievement unlocks for what the run actually accomplished.
   const summary: AchSummary = {
@@ -886,6 +947,14 @@ export function bankRun(): ResultData {
     ...claimed.worlds.map((w) => w.name),
     ...claimed.accessories.map((a) => a.name),
   ];
+  // A milestone-evolution form earned this run is a peak moment — it (along with a
+  // new best or a first-ever Zone) is what makes a death "notable" enough to earn
+  // the Ascent tease cinematic instead of an instant-retry result (see endRun).
+  const formEarned = claimed.skins.some((s) => MILESTONE_SKINS.some((m) => m.id === s.id));
+  const newTopZone = !zen && Profile.noteZone(G.zone);
+
+  // Season Track progress (M6) — XP from the run's height + perfects + first-run bonus.
+  const season = zen ? { gain: 0, tierUp: 0 } : Season.addXP(dH + dPerf * 4 + (firstEnd ? 20 : 0));
 
   if (newBest) { CG.happy(); CG.submitHeight(Profile.best); }
   if (leveledUp || dDone || newBest || dailyMedals.length || achievements.length || claimedUnlocks.length) SFX.unlock();
@@ -900,6 +969,12 @@ export function bankRun(): ResultData {
     constellations: G.constellations,
     dailyMedals,
     claimedUnlocks,
+    formEarned,
+    newTopZone,
+    seasonGain: season.gain,
+    seasonTierUp: season.tierUp,
+    careerDone,
+    masteryUp,
   };
 }
 
@@ -908,14 +983,18 @@ export function endRun(): void {
   CG.gameplayStop();
   Telemetry.runEnd(G.height, G.perfects, G.flings, settings.reducedMotion);
   const data = bankRun();
-  // A real run gets the ASCENT TEASE cinematic first (auto-advances to the
-  // game-over screen). Zen has no climb / best to tease, so it goes straight there.
-  if (data.zen) {
-    Result.show(data);
-    state.scene = 'over';
-  } else {
+  // INSTANT-RETRY RULE (coil-retention-plan.md M1): a hypercasual climber's master
+  // metric is retry-rate, so an ordinary death must go straight to a one-tap-retry
+  // result screen — no interstitial. The ASCENT TEASE cinematic is reserved for
+  // *notable* deaths (a new best, a freshly-earned evolution form, or a first-ever
+  // Zone reached) where the celebration is earned and drives the return loop.
+  const notable = !data.zen && (data.newBest || data.formEarned || data.newTopZone);
+  if (notable) {
     openTease(data);
     state.scene = 'tease';
+  } else {
+    Result.show(data, true);   // fast path → single nearest-progress bar, instant retry
+    state.scene = 'over';
   }
 }
 

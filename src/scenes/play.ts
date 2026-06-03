@@ -3,12 +3,13 @@ import { state, sY, fieldLeft, fieldRight } from '../game/state';
 import { skin } from '../game/skins';
 import { trail, world } from '../game/collection';
 import { accessory } from '../game/accessories';
+import { Echo } from '../game/echo';
 import { Profile } from '../game/profile';
 import { Pop } from '../core/particles';
 import { fxDrawOverlay, fxDrawWorld } from '../core/fx';
 import { TAU, angDiff, clamp, fx, glowFX, hexA, lerp, mixHex, pcount, rand, text } from '../core/utils';
 import { btn } from '../core/ui';
-import { settings, setAimPreview, setCbGate, setMuted, setMusicMuted, setReducedMotion } from '../settings';
+import { settings, setAimPreview, setCbGate, setEchoVisible, setMuted, setMusicMuted, setReducedMotion } from '../settings';
 import { rr } from '../core/utils';
 import { CATCH_PAD, DAILY_MEDALS, DECAY_TIME, G_FALL, LAND_SQUASH, LAUNCH, MILESTONES, ORBIT, WALL, ZONES } from '../config';
 
@@ -134,13 +135,15 @@ export function drawBG(): void {
 
   // Parallax nebula clouds — soft additive glow that drifts as you climb, giving
   // the void real depth. Skipped on the lowest FX tier; uses the world accents.
-  if (glowFX(10) > 3) {
+  if (fx.level !== 'low') {
     const span = H * 1.6;
     const cn = wld.node || '#2ff3e0';
     const cv = wld.void || '#ff3b5c';
+    const nebulaN = fx.level === 'medium' ? 3 : NEBULA.length;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    for (const nb of NEBULA) {
+    for (let i = 0; i < nebulaN; i++) {
+      const nb = NEBULA[i];
       const yy = (((nb.y * span + cam * nb.d) % span) + span) % span - H * 0.3;
       const cx = nb.x * W;
       const g = ctx.createRadialGradient(cx, yy, 0, cx, yy, nb.r);
@@ -160,25 +163,32 @@ export function drawBG(): void {
   }
   ctx.globalAlpha = 1;
 
-  if (glowFX(10) > 3) {
+  if (fx.level !== 'low') {
     ctx.save();
     ctx.lineWidth = 1;
     ctx.globalCompositeOperation = 'lighter';
-    for (const st of STREAKS) {
+    const streakN = fx.level === 'medium' ? 8 : STREAKS.length;
+    for (let i = 0; i < streakN; i++) {
+      const st = STREAKS[i];
       const yy = (((st.y * H + cam * st.d + bgT * 20 * st.d) % H) + H) % H;
       const x = st.x * W;
-      const g = ctx.createLinearGradient(x, yy - st.h, x, yy);
-      g.addColorStop(0, 'rgba(47,243,224,0)');
-      g.addColorStop(0.52, `rgba(198,216,255,${st.a})`);
-      g.addColorStop(1, 'rgba(255,77,141,0)');
-      ctx.strokeStyle = g;
+      if (fx.level === 'high') {
+        const g = ctx.createLinearGradient(x, yy - st.h, x, yy);
+        g.addColorStop(0, 'rgba(47,243,224,0)');
+        g.addColorStop(0.52, `rgba(198,216,255,${st.a})`);
+        g.addColorStop(1, 'rgba(255,77,141,0)');
+        ctx.strokeStyle = g;
+      } else {
+        ctx.globalAlpha = st.a * 1.6;
+        ctx.strokeStyle = '#c6d8ff';
+      }
       ctx.beginPath();
       ctx.moveTo(x, yy - st.h);
       ctx.lineTo(x, yy);
       ctx.stroke();
     }
     const cycle = (bgT * 0.08) % 1;
-    if (cycle < 0.16) {
+    if (fx.level === 'high' && cycle < 0.16) {
       const p = cycle / 0.16;
       const x = lerp(W * 0.18, W * 0.86, p);
       const y = lerp(H * 0.18, H * 0.42, p);
@@ -212,8 +222,10 @@ function drawNode(n: import('../types').Node): void {
     ctx.translate(x, y);
     ctx.rotate(state.G.t * 1.5);
     ctx.fillStyle = '#ff3b5c';
-    ctx.shadowColor = '#ff3b5c';
-    ctx.shadowBlur = glowFX(14);
+    if (fx.level !== 'low') {
+      ctx.shadowColor = '#ff3b5c';
+      ctx.shadowBlur = glowFX(14);
+    }
     ctx.beginPath();
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * TAU;
@@ -241,8 +253,10 @@ function drawNode(n: import('../types').Node): void {
     ctx.translate(x + (jit ? rand(-jit, jit) : 0), y + (jit ? rand(-jit, jit) : 0));
     // flickering body
     ctx.fillStyle = core;
-    ctx.shadowColor = core;
-    ctx.shadowBlur = glowFX(16 + danger * 14);
+    if (fx.level !== 'low') {
+      ctx.shadowColor = core;
+      ctx.shadowBlur = glowFX(16 + danger * 14);
+    }
     ctx.globalAlpha = 0.82 + Math.sin(state.G.t * 9 + (n.pulse ?? 0)) * 0.14;
     ctx.beginPath();
     ctx.arc(0, 0, pr, 0, TAU);
@@ -266,8 +280,10 @@ function drawNode(n: import('../types').Node): void {
       ctx.strokeStyle = rc;
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
-      ctx.shadowColor = rc;
-      ctx.shadowBlur = glowFX(10);
+      if (fx.level !== 'low') {
+        ctx.shadowColor = rc;
+        ctx.shadowBlur = glowFX(10);
+      }
       ctx.beginPath();
       ctx.arc(0, 0, pr + 7, -Math.PI / 2, -Math.PI / 2 + TAU * frac);
       ctx.stroke();
@@ -286,6 +302,62 @@ function drawNode(n: import('../types').Node): void {
   const core = bonus ? '#fff6c2' : target ? '#ffffff' : '#ece8ff';
   const pulse = 0.5 + 0.5 * Math.sin(G.t * (target ? 5.2 : 2.3) + (n.pulse ?? 0));
   const pr = n.r * (1 + Math.sin(G.t * 2 + (n.pulse ?? 0)) * (target ? 0.09 : 0.045));
+
+  if (fx.level === 'low') {
+    ctx.save();
+    if (target) {
+      ctx.globalAlpha = 0.34 + pulse * 0.26;
+      ctx.strokeStyle = frenzy ? '#ffd24a' : sk.t;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(x, y, pr + 9 + pulse * 3, 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.arc(x, y, pr, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = target ? 'rgba(255,255,255,.9)' : 'rgba(255,255,255,.48)';
+    ctx.lineWidth = target ? 1.8 : 1.1;
+    ctx.beginPath();
+    ctx.arc(x, y, pr + (latched ? 1.5 : 0), 0, TAU);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.82)';
+    ctx.beginPath();
+    ctx.ellipse(x - pr * 0.32, y - pr * 0.38, pr * 0.22, pr * 0.13, -0.45, 0, TAU);
+    ctx.fill();
+    if (bonus || frenzy) {
+      ctx.strokeStyle = bonus ? '#fff3b0' : '#ffd24a';
+      ctx.globalAlpha = bonus ? 0.82 : 0.55;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, pr * 0.58, G.t * 1.2, G.t * 1.2 + Math.PI * 1.35);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    if (n.type === 'move' && (n.amp ?? 0) > 0) {
+      const vel = Math.cos(state.G.t * (n.spd ?? 1) + (n.ph ?? 0));
+      const d = vel >= 0 ? 1 : -1;
+      const ax = x + d * (pr + 7);
+      ctx.save();
+      ctx.globalAlpha = 0.35 + Math.abs(vel) * 0.4;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      for (let k = 0; k < 2; k++) {
+        const cxx = ax + d * k * 5;
+        ctx.beginPath();
+        ctx.moveTo(cxx - d * 2, y - 4);
+        ctx.lineTo(cxx + d * 2, y);
+        ctx.lineTo(cxx - d * 2, y + 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    return;
+  }
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -799,7 +871,7 @@ function drawPlayer(): void {
   // FRENZY-readiness shimmer — a gold pre-charge ring while OVERDRIVE is nearly
   // full, so the player can SEE the reward about to land (anticipation telegraph
   // that pairs with the riser cue + the charging meter).
-  if (G.overdrive >= 0.7 && !frenzy && !G.dead) {
+  if (G.overdrive >= 0.7 && !frenzy && !G.dead && fx.level !== 'low') {
     const near = clamp((G.overdrive - 0.7) / 0.3, 0, 1);   // matches the meter's charge ramp
     const p = 0.5 + 0.5 * Math.sin(G.t * (7 + near * 6));
     ctx.save();
@@ -874,24 +946,30 @@ function drawPlayer(): void {
     const glow = happy ? 38 : inPerfect ? 34 : 24;
     ctx.save();
     ctx.translate(x, y);
-    ctx.globalCompositeOperation = 'lighter';
-    const auraR = visualR * (frenzy ? 4.1 : happy ? 3.3 : inPerfect ? 3.0 : 2.35);
-    const aura = ctx.createRadialGradient(0, 0, visualR * 0.5, 0, 0, auraR);
-    aura.addColorStop(0, hexA(frenzy ? '#ffd24a' : sk.c, frenzy ? 0.38 : 0.26));
-    aura.addColorStop(0.42, hexA(frenzy ? sk.c : sk.t, frenzy ? 0.18 : 0.12));
-    aura.addColorStop(1, hexA(sk.c, 0));
-    ctx.fillStyle = aura;
-    ctx.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
+    if (fx.level !== 'low') {
+      ctx.globalCompositeOperation = 'lighter';
+      const auraR = visualR * (frenzy ? 4.1 : happy ? 3.3 : inPerfect ? 3.0 : 2.35);
+      const aura = ctx.createRadialGradient(0, 0, visualR * 0.5, 0, 0, auraR);
+      aura.addColorStop(0, hexA(frenzy ? '#ffd24a' : sk.c, frenzy ? 0.38 : 0.26));
+      aura.addColorStop(0.42, hexA(frenzy ? sk.c : sk.t, frenzy ? 0.18 : 0.12));
+      aura.addColorStop(1, hexA(sk.c, 0));
+      ctx.fillStyle = aura;
+      ctx.fillRect(-auraR, -auraR, auraR * 2, auraR * 2);
+    }
     ctx.globalCompositeOperation = 'source-over';
     ctx.rotate(pl.face);
-    ctx.shadowColor = sk.c;
-    ctx.shadowBlur = glowFX(glow);
-    const body = ctx.createRadialGradient(-visualR * 0.42, -visualR * 0.45, visualR * 0.08, 0, 0, visualR * 1.12);
-    body.addColorStop(0, '#ffffff');
-    body.addColorStop(0.22, sk.t);
-    body.addColorStop(0.72, sk.c);
-    body.addColorStop(1, mixHex(sk.c, '#05030e', 0.28));
-    ctx.fillStyle = body;
+    if (fx.level !== 'low') {
+      ctx.shadowColor = sk.c;
+      ctx.shadowBlur = glowFX(glow);
+      const body = ctx.createRadialGradient(-visualR * 0.42, -visualR * 0.45, visualR * 0.08, 0, 0, visualR * 1.12);
+      body.addColorStop(0, '#ffffff');
+      body.addColorStop(0.22, sk.t);
+      body.addColorStop(0.72, sk.c);
+      body.addColorStop(1, mixHex(sk.c, '#05030e', 0.28));
+      ctx.fillStyle = body;
+    } else {
+      ctx.fillStyle = happy || inPerfect ? sk.t : sk.c;
+    }
     ctx.beginPath();
     ctx.ellipse(0, 0, visualR * sclX, visualR * sclY, 0, 0, TAU);
     ctx.fill();
@@ -1200,7 +1278,7 @@ function drawComboFlash(): void {
   ctx.restore();
 }
 
-function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff' | 'cb', col: string): void {
+function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff' | 'cb' | 'echo' | 'echoOff', col: string): void {
   const { ctx } = view;
   ctx.save();
   rr(x, y, s, s, 10);
@@ -1281,6 +1359,18 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
       ctx.lineTo(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9);
       ctx.stroke();
     }
+  } else if (icon === 'echo' || icon === 'echoOff') {
+    // two trailing orbs = "race your ghost"; slash = off
+    ctx.beginPath(); ctx.arc(cx + 3, cy, 4, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.beginPath(); ctx.arc(cx - 5, cy + 1, 3, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+    if (icon === 'echoOff') {
+      ctx.beginPath();
+      ctx.moveTo(cx - 9, cy + 9);
+      ctx.lineTo(cx + 9, cy - 9);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -1306,14 +1396,50 @@ export function drawTopToggles(): void {
   btn('motion', x3, top, s, s, () => setReducedMotion(!settings.reducedMotion));
   drawIconBtn(x3, top, s, settings.reducedMotion ? 'motionOff' : 'motion',
     settings.reducedMotion ? '#5b6488' : '#a76bff');
-  // Colour-blind gate toggle — accessibility, set-once. Only on the home screen:
-  // the in-play row sits beside the centred height HUD and a 5th icon would collide
-  // on narrow mobile, so the menu (which has room) owns this preference.
+  // Home-only accessibility/preference toggles (colour-blind gate + Echo ghost).
+  // They live on a SECOND row at the left so they never collide with the centred
+  // height HUD in-play, nor with the top-right reward cluster on home.
   if (state.scene === 'home') {
-    const x4 = pad + 4 * (s + 8);
-    btn('cbgate', x4, top, s, s, () => setCbGate(!settings.cbGate));
-    drawIconBtn(x4, top, s, 'cb', settings.cbGate ? '#9be35a' : '#5b6488');
+    const row2 = top + s + 8;
+    btn('cbgate', pad, row2, s, s, () => setCbGate(!settings.cbGate));
+    drawIconBtn(pad, row2, s, 'cb', settings.cbGate ? '#9be35a' : '#5b6488');
+    // Echo ghost toggle — the doc requires an opt-out for players who find the
+    // racing ghost distracting (M5).
+    const ex = pad + (s + 8);
+    btn('echo', ex, row2, s, s, () => setEchoVisible(!settings.echoVisible));
+    drawIconBtn(ex, row2, s, settings.echoVisible ? 'echo' : 'echoOff',
+      settings.echoVisible ? '#2ff3e0' : '#5b6488');
   }
+}
+
+/* ECHO GHOST (M5) — a faint replay of the player's best run, racing in real time.
+   Drawn behind the nodes so it never obscures the gate. Normal mode only, and
+   only while the Echo toggle is on. */
+function drawEcho(): void {
+  const G = state.G;
+  if (G.daily || G.zen || !settings.echoVisible || !Echo.has()) return;
+  const p = Echo.at(G.t);
+  if (!p) return;
+  const { ctx, H } = view;
+  const y = sY(p.y);
+  if (y < -24 || y > H + 24) return;
+  const sk = skin();
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = sk.c;
+  ctx.shadowColor = sk.c;
+  ctx.shadowBlur = glowFX(10);
+  ctx.beginPath();
+  ctx.arc(p.x, y, 7, 0, TAU);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 0.55;
+  ctx.fillStyle = '#dfe7ff';
+  ctx.font = "800 8px 'Sora', sans-serif";
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('BEST', p.x, y - 13);
+  ctx.restore();
 }
 
 /* In-world "ghost goal" markers — a line you climb toward. Normal mode shows
@@ -1387,7 +1513,7 @@ function drawFrenzyBloom(): void {
   ctx.translate(cx, cy);
   ctx.rotate(G.t * 0.6);
   ctx.globalCompositeOperation = 'lighter';
-  const beams = 9;
+  const beams = fx.level === 'medium' ? 5 : 9;
   for (let i = 0; i < beams; i++) {
     const c = cols[i % cols.length];
     ctx.save();
@@ -1408,15 +1534,18 @@ function drawFrenzyBloom(): void {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.lineCap = 'round';
-  for (let i = 0; i < 18; i++) {
+  const rainN = fx.level === 'medium' ? 8 : 18;
+  for (let i = 0; i < rainN; i++) {
     const p = (G.t * (0.42 + (i % 4) * 0.08) + i * 0.071) % 1;
     const x = ((i * 73.3) % W) + Math.sin(i) * 18;
     const y = lerp(-80, H + 80, p);
     const c = cols[i % cols.length];
     ctx.globalAlpha = (1 - p) * 0.28;
     ctx.strokeStyle = c;
-    ctx.shadowColor = c;
-    ctx.shadowBlur = glowFX(9);
+    if (fx.level === 'high') {
+      ctx.shadowColor = c;
+      ctx.shadowBlur = glowFX(9);
+    }
     ctx.lineWidth = 1.2 + (i % 3) * 0.6;
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -1516,6 +1645,7 @@ export function renderPlay(): void {
   drawBG();
   drawVoid();
   drawGoalMarkers();
+  drawEcho();
   drawFrenzyBloom();
   for (const n of G.nodes) drawNode(n);
   drawConstellations();

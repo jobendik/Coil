@@ -1,4 +1,4 @@
-export type Scene = 'home' | 'play' | 'over' | 'shop' | 'ascent' | 'tease';
+export type Scene = 'home' | 'play' | 'over' | 'shop' | 'ascent' | 'tease' | 'season';
 
 export type NodeType = 'normal' | 'small' | 'bonus' | 'move' | 'spike' | 'decay';
 
@@ -125,6 +125,11 @@ export interface GameState {
   potWon: number;                 // ★ amount won from the vault this run (for the result screen)
   freezeT: number;                // brief anticipation hold after a huge event
   bestNearShown: boolean;         // honest "so close to your best" toast (once per run)
+  // ---- honest near-miss death (M2) ----
+  missGapPx: number;              // smallest surface-gap (world px) to a catchable node during the CURRENT flight
+  missNode: Node | null;          // the node that came closest during the current flight (slow-mo focal point)
+  nearMiss: boolean;              // the fatal death was a genuine near-miss → slow-mo + "MISSED BY n m"
+  missM: number;                  // the honest gap, in metres, frozen at the fatal moment (for the callout)
   doomed: boolean;                // lookahead proved this fling can't catch — fast-forward to death
   _doomTick?: number;             // throttle counter for the doom lookahead
   decayT: number;                 // DECAY-node collapse countdown (s) while orbiting one; 0 = not on a decay gate
@@ -155,6 +160,7 @@ export interface Skin {
   t: string;
   tag?: string;
   req?: UnlockReq;
+  shardPrice?: number;   // alternate ◈-shard purchase route (M8)
 }
 
 export type TrailStyle = 'line' | 'comet' | 'dots' | 'sparkle' | 'bubbles' | 'rainbow';
@@ -168,6 +174,7 @@ export interface Trail {
   t: string | null;
   tag?: string;
   req?: UnlockReq;
+  shardPrice?: number;
 }
 
 export interface World {
@@ -180,6 +187,7 @@ export interface World {
   node: string;       // normal-node accent
   tag?: string;
   req?: UnlockReq;
+  shardPrice?: number;
 }
 
 /** Accessories are a SECOND cosmetic slot worn on top of the character — orbiting
@@ -199,6 +207,7 @@ export interface Accessory {
   glyph?: 'crown' | 'antenna' | 'visor' | 'halo' | 'soft';  // crown/aura variant
   tag?: string;
   req?: UnlockReq;
+  shardPrice?: number;
 }
 
 export interface Achievement {
@@ -254,6 +263,7 @@ export interface MissionState {
 export interface DailyData {
   date: string;
   missions: MissionState[];     // exactly 3 — easy/med/hard
+  rerollUsed?: boolean;         // the one free daily reroll has been spent (M4)
 }
 
 export interface Particle {
@@ -301,6 +311,12 @@ export interface ResultData {
   constellations: number;  // constellation chains completed this run
   dailyMedals: DailyMedal[];    // medals freshly earned on this daily run
   claimedUnlocks: string[];     // names of cosmetics earned for free this run (skill-gated)
+  formEarned: boolean;          // a milestone-evolution form was earned this run (drives the Ascent tease)
+  newTopZone: boolean;          // this run reached a higher Zone than ever before (notable death)
+  seasonGain: number;           // season XP earned this run (M6)
+  seasonTierUp: number;         // number of season tiers crossed this run (0 = none)
+  careerDone: string[];         // career-milestone labels completed this run (M8)
+  masteryUp: number;            // zone-mastery levels gained this run (M8)
 }
 
 export type FxLevel = 'high' | 'medium' | 'low';

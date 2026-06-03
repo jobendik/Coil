@@ -101,6 +101,34 @@ export const Daily = {
   allDone(): boolean {
     return this.d.missions.every((m) => m.done);
   },
+
+  /** The one free reroll per day (M4) — agency + anti-frustration. */
+  canReroll(): boolean {
+    return !this.d.rerollUsed;
+  },
+
+  /**
+   * Reroll a single still-incomplete mission to a different goal in the SAME tier
+   * (so the easy/med/hard ladder is preserved). Consumes the day's one reroll.
+   * Returns true if a reroll happened.
+   */
+  reroll(idx: number): boolean {
+    if (this.d.rerollUsed) return false;
+    const m = this.d.missions[idx];
+    if (!m || m.done) return false;
+    const cur = GOALS[m.idx];
+    const pool: number[] = [];
+    for (let j = 0; j < GOALS.length; j++) if (GOALS[j].tier === cur.tier && j !== m.idx) pool.push(j);
+    if (!pool.length) return false;
+    // Deterministic-but-varied pick: step by the current index so a reroll never
+    // lands back on the same goal and feels like a real swap.
+    m.idx = pool[(m.idx + 1) % pool.length];
+    m.prog = 0;
+    m.done = false;
+    this.d.rerollUsed = true;
+    this.save();
+    return true;
+  },
 };
 
 Daily.load();

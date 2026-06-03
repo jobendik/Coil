@@ -9,17 +9,32 @@ import { clamp } from './utils';
    via Music.pause() from the loop's pause hook. Volume fades in/out so toggles
    and ad breaks aren't jarring.
 
-   MULTI-TRACK — anti-fatigue. The single bundled track is track 0. Any extra
-   files dropped into src/assets/music/ (*.mp3) join the rotation automatically;
-   Music.cycle() (called at run start) crossfades to a different track so a long
-   session doesn't loop one tune for 10 minutes (the playtime window CrazyGames
-   measures). Tracks load lazily — an element is only created the first time its
-   track is selected — and are cached + reused, so build/first-paint cost is the
-   same as today until the player actually adds tracks.
+   THREE BEDS — a sense of place, driven by setScene():
+     • LOBBY  — home / shop. A calm, STABLE menu theme; held the whole time the
+                player is browsing (it never shuffles under them).
+     • PLAY   — gameplay. A driving track drawn from a shuffled bag. The SAME
+                track is kept across a chain of quick replays — it only rotates
+                after GP_ROTATE_S of *actual play* — so short runs don't churn
+                the music every 30 s, while a long session still gets variety
+                (the 10-minute playtime window CrazyGames measures).
+     • (hold) — over / ascent / tease. The run's bed keeps playing through the
+                comedown; nothing switches until the player returns to the lobby.
 
    ZEN bed — in the calm mode the catchy track steps aside for a procedural
-   ambient pad (soft ocean/wind + a low drone), synthesised with WebAudio so
-   it needs no extra asset. Driven by setZen().
+   ambient pad (soft ocean/wind + a low drone), synthesised with WebAudio so it
+   needs no extra asset, plus an optional zen_*.mp3 track if one is supplied.
+
+   TRACK POOLS (filename conventions, matched case-insensitively against files
+   dropped into src/assets/music/):
+     • "zen"        → Zen-only pool.
+     • "menu" / "deep_void" → lobby pool (deep_void is the chosen menu theme).
+     • everything else (incl. bundled track 0) → gameplay rotation.
+   With no extra files every pool collapses onto track 0, so behaviour degrades
+   gracefully to a single, non-churning track everywhere.
+
+   Tracks load lazily — an element is only created the first time its track is
+   selected — and are cached + reused, so build/first-paint cost is unchanged
+   until the player actually adds tracks.
 
    Autoplay policy: browsers block audio until a user gesture, so everything is
    created lazily on the first tap/key (Music.start) — never at module load,
@@ -27,6 +42,7 @@ import { clamp } from './utils';
 
 const BASE_VOL = 0.3;       // unobtrusive under the SFX
 const FADE = 1.8;           // volume units per second
+const GP_ROTATE_S = 180;    // gameplay track rotates only after this much actual play
 
 // Extra tracks: dropped into src/assets/music/. import.meta.glob is a Vite
 // transform; the try/catch keeps the headless test bundler (esbuild) happy, where
@@ -39,17 +55,28 @@ try {
 } catch { /* non-Vite bundler */ }
 const extraKeys = Object.keys(extraMusic).sort();
 const TRACKS: string[] = [musicUrl, ...extraKeys.map((k) => extraMusic[k])];
-// Track 0 (background_music.mp3) is always a normal track.
-// Extra tracks whose path contains "zen" are Zen-only; all others join the normal rotation.
+// Track 0 (background_music.mp3) is always a gameplay track. Extra tracks sort
+// into pools by filename convention (see header).
 const ZEN_IDXS: number[] = [];
-const NORMAL_IDXS: number[] = [0];
+const MENU_IDXS: number[] = [];
+const GAME_IDXS: number[] = [0];
 extraKeys.forEach((k, i) => {
-  if (k.toLowerCase().includes('zen')) ZEN_IDXS.push(i + 1);
-  else NORMAL_IDXS.push(i + 1);
+  const key = k.toLowerCase();
+  const idx = i + 1;
+  if (key.includes('zen')) ZEN_IDXS.push(idx);
+  else if (key.includes('menu') || key.includes('deep_void')) MENU_IDXS.push(idx);
+  else GAME_IDXS.push(idx);
 });
+// One stable lobby track for the whole session (falls back to gameplay track 0).
+const menuIdx = MENU_IDXS.length ? MENU_IDXS[0] : GAME_IDXS[0];
 
+type Mode = 'lobby' | 'play' | 'hold';
 let started = false;
+let mode: Mode = 'lobby';
 let zen = false;
+let gameIdx = -1;           // current gameplay-pool pick (persists across replays)
+let zenIdx = -1;            // current zen-pool pick
+let gpElapsed = 0;          // seconds of actual gameplay on the current game track
 
 // Lazily-created, cached <audio> elements keyed by track index. cur = the track
 // fading toward target volume; prev = the outgoing track during a crossfade.
@@ -73,13 +100,58 @@ function trackEl(i: number): HTMLAudioElement | null {
   }
 }
 
-function pickNext(isZen: boolean): number {
-  const pool = isZen ? ZEN_IDXS : NORMAL_IDXS;
-  if (pool.length === 0) return curIdx;
-  if (pool.length === 1) return pool[0];
-  let i = curIdx;
-  while (i === curIdx) i = pool[Math.floor(Math.random() * pool.length)];
+// Crossfade target → make the current track the outgoing one, fade the new in.
+function switchTo(i: number): void {
+  if (i < 0 || i === curIdx) return;
+  if (curVol > 0.01) { prevIdx = curIdx; prevVol = curVol; }
+  curIdx = i;
+  curVol = 0;
+  trackEl(i);
+}
+
+// Shuffle bag over the gameplay pool: each track plays once before any repeat.
+let bag: number[] = [];
+function nextGameTrack(): number {
+  if (GAME_IDXS.length <= 1) return GAME_IDXS[0];
+  if (bag.length === 0) {
+    bag = GAME_IDXS.slice();
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    // Avoid a back-to-back repeat across the bag boundary.
+    if (bag[bag.length - 1] === gameIdx) {
+      [bag[bag.length - 1], bag[0]] = [bag[0], bag[bag.length - 1]];
+    }
+  }
+  return bag.pop() as number;
+}
+
+function nextZenTrack(): number {
+  if (ZEN_IDXS.length === 0) return -1;
+  if (ZEN_IDXS.length === 1) return ZEN_IDXS[0];
+  let i = zenIdx;
+  while (i === zenIdx) i = ZEN_IDXS[Math.floor(Math.random() * ZEN_IDXS.length)];
   return i;
+}
+
+// Pick & crossfade to the right track for the current bed. Called on mode/zen
+// changes (and from start()), never per-frame.
+function applyBed(): void {
+  if (mode === 'lobby') { switchTo(menuIdx); return; }
+  if (mode !== 'play') return;        // 'hold' keeps whatever is playing
+  if (zen) {
+    zenIdx = nextZenTrack();
+    if (zenIdx >= 0) switchTo(zenIdx); // else: no zen track → procedural ambient only
+    return;
+  }
+  // Keep the same gameplay track across quick replays; rotate only once the
+  // player has actually been in-run long enough.
+  if (gameIdx < 0 || gpElapsed >= GP_ROTATE_S) {
+    gameIdx = nextGameTrack();
+    gpElapsed = 0;
+  }
+  switchTo(gameIdx);
 }
 
 /* ---------- procedural Zen ambient (WebAudio) ---------- */
@@ -165,28 +237,12 @@ const Zen = {
 };
 
 export const Music = {
-  /** Begin the bed on the first user gesture (satisfies autoplay policy). Picks
-   *  one starting track and creates ONLY that element, so we never fetch a track
-   *  we won't play (the default is 4 MB — don't load it just to cycle away). */
+  /** Begin the bed on the first user gesture (satisfies autoplay policy). Honours
+   *  whatever scene the loop has already reported (default: lobby) and creates
+   *  ONLY that track's element, so we never fetch a track we won't play. */
   start(): void {
     started = true;
-    if (curIdx < 0) curIdx = NORMAL_IDXS[Math.floor(Math.random() * NORMAL_IDXS.length)];
-    trackEl(curIdx);
-  },
-
-  /** Crossfade to a different track. Called at run start so a long session gets
-   *  variety. No-op with a single track, and on the very first run (the track
-   *  start() chose hasn't faded in yet — keep it rather than load a second). */
-  cycle(): void {
-    if (!started) return;
-    const pool = zen ? ZEN_IDXS : NORMAL_IDXS;
-    if (pool.length < 2) return;
-    if (curVol < 0.01 && prevIdx < 0) return;     // first run: don't swap off the fresh pick
-    prevIdx = curIdx;
-    prevVol = curVol;
-    curIdx = pickNext(zen);
-    curVol = 0;
-    trackEl(curIdx);
+    applyBed();
   },
 
   /** Hard-pause immediately — used when an ad starts or the tab is hidden. The
@@ -197,35 +253,26 @@ export const Music = {
     Zen.silence();
   },
 
-  /** Switch to/from Zen mode: crossfades to a zen track (or back to a normal track).
-   *  No-op when the mode hasn't changed (called every frame from the loop). */
-  setZen(on: boolean): void {
-    if (zen === on) return;
-    zen = on;
+  /** Per-frame scene report from the loop. Idempotent — only crossfades when the
+   *  bed actually changes. 'play' selects the gameplay/zen bed; 'lobby' the
+   *  stable menu theme; 'hold' (result / ascent / tease) keeps the run's bed
+   *  through the comedown. `zenOn` is only meaningful while playing. */
+  setScene(next: Mode, zenOn: boolean): void {
+    const prevMode = mode;
+    const prevZen = zen;
+    if (next === 'play') zen = zenOn;
+    else if (next === 'lobby') zen = false;
+    // 'hold' keeps the prior zen flag so a zen run's bed survives the comedown.
+    mode = next;
     if (!started) return;
-    // If the current track belongs to the wrong pool, switch to the correct one.
-    const zenCurrent = ZEN_IDXS.includes(curIdx);
-    if (on !== zenCurrent) {
-      const pool = on ? ZEN_IDXS : NORMAL_IDXS;
-      if (pool.length > 0) {
-        prevIdx = curIdx;
-        prevVol = curVol;
-        curIdx = pickNext(on);
-        curVol = 0;
-        trackEl(curIdx);
-      }
-    }
-  },
-
-  /** Combo/FRENZY energy hook from the loop. The procedural intensity layer was
-   *  retired in favour of multi-track rotation (see Music.cycle), so this is now a
-   *  no-op kept for call-site compatibility with main.ts. */
-  setIntensity(_x: number): void {
-    /* intensity shaker disabled — multi-track variety replaces it */
+    if (mode === prevMode && zen === prevZen) return;
+    applyBed();
   },
 
   /** Per-frame fade + play/pause sync against the mute setting + tab visibility. */
   upd(dt: number): void {
+    if (mode === 'play' && !zen) gpElapsed += dt;   // count actual gameplay only
+
     const allow = !settings.musicMuted && !document.hidden;
     // Zen ambient (only while in the Zen bed and music is allowed).
     Zen.upd(dt, allow && zen);

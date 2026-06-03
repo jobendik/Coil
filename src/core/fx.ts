@@ -49,19 +49,24 @@ export const Coins = {
   },
   draw(): void {
     const { ctx } = view;
+    const low = fx.level === 'low';
+    if (!low) { ctx.shadowColor = '#ffb020'; ctx.shadowBlur = glowFX(9); }
     for (const c of this.a) {
       const al = clamp(c.life * 1.6, 0, 1);
       const w = Math.abs(Math.cos(c.rot)) * c.sz + 1.6;
-      ctx.save();
-      ctx.translate(c.x, c.y);
       ctx.globalAlpha = al;
-      ctx.fillStyle = '#ffcf3a'; ctx.shadowColor = '#ffb020'; ctx.shadowBlur = glowFX(9);
-      ctx.beginPath(); ctx.ellipse(0, 0, w, c.sz, 0, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.ellipse(-w * 0.18, -c.sz * 0.18, w * 0.5, c.sz * 0.5, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = '#d9881a'; ctx.beginPath(); ctx.ellipse(0, 0, Math.max(0.8, w * 0.22), c.sz * 0.34, 0, 0, TAU); ctx.fill();
-      ctx.restore();
+      ctx.fillStyle = '#ffcf3a';
+      ctx.beginPath();
+      if (low) ctx.arc(c.x, c.y, Math.max(2, c.sz * 0.62), 0, TAU);
+      else ctx.ellipse(c.x, c.y, w, c.sz, 0, 0, TAU);
+      ctx.fill();
+      if (low) continue;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.ellipse(c.x - w * 0.18, c.y - c.sz * 0.18, w * 0.5, c.sz * 0.5, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#d9881a'; ctx.beginPath(); ctx.ellipse(c.x, c.y, Math.max(0.8, w * 0.22), c.sz * 0.34, 0, 0, TAU); ctx.fill();
+      ctx.shadowBlur = glowFX(9);
     }
-    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0; ctx.globalAlpha = 1;
   },
   clear(): void { this.a.length = 0; },
 };
@@ -98,11 +103,17 @@ export const Confetti = {
   },
   draw(): void {
     const { ctx } = view;
+    const low = fx.level === 'low';
     for (const p of this.a) {
       const al = clamp(p.life, 0, 1);
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = al; ctx.fillStyle = p.c;
       const hh = p.h * Math.abs(Math.cos(p.swp)) + 1;
-      ctx.fillRect(-p.w / 2, -hh / 2, p.w, hh); ctx.restore();
+      ctx.globalAlpha = al; ctx.fillStyle = p.c;
+      if (low) {
+        ctx.fillRect(p.x - p.w / 2, p.y - hh / 2, p.w, hh);
+      } else {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillRect(-p.w / 2, -hh / 2, p.w, hh); ctx.restore();
+      }
     }
     ctx.globalAlpha = 1;
   },
@@ -178,7 +189,7 @@ export const Shock = {
       const p = s.t / s.life; const e = 1 - Math.pow(1 - p, 3);
       const r = lerp(s.r0, s.r1, e); const al = (1 - p) * 0.85;
       ctx.save(); ctx.globalAlpha = al; ctx.strokeStyle = s.c; ctx.lineWidth = Math.max(0.5, s.lw * (1 - p));
-      ctx.shadowColor = s.c; ctx.shadowBlur = glowFX(16);
+      if (fx.level !== 'low') { ctx.shadowColor = s.c; ctx.shadowBlur = glowFX(16); }
       ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, TAU); ctx.stroke();
       if (s.fill) { ctx.globalAlpha = al * 0.16; ctx.fillStyle = s.c; ctx.fill(); }
       ctx.restore();
@@ -210,14 +221,21 @@ export const Sparkles = {
   },
   draw(): void {
     const { ctx } = view;
+    const low = fx.level === 'low';
     for (const s of this.a) {
       const p = s.t / s.life; const al = Math.sin(p * Math.PI); const sz = s.sz * (0.5 + al * 0.8);
-      ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot); ctx.globalAlpha = al;
-      ctx.fillStyle = s.c; ctx.shadowColor = s.c; ctx.shadowBlur = glowFX(10);
-      ctx.beginPath();
-      ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.26, -sz * 0.26); ctx.lineTo(sz, 0); ctx.lineTo(sz * 0.26, sz * 0.26);
-      ctx.lineTo(0, sz); ctx.lineTo(-sz * 0.26, sz * 0.26); ctx.lineTo(-sz, 0); ctx.lineTo(-sz * 0.26, -sz * 0.26);
-      ctx.closePath(); ctx.fill(); ctx.restore();
+      ctx.globalAlpha = al; ctx.fillStyle = s.c;
+      if (low) {
+        ctx.fillRect(s.x - sz * 0.5, s.y - 1, sz, 2);
+        ctx.fillRect(s.x - 1, s.y - sz * 0.5, 2, sz);
+      } else {
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot);
+        ctx.shadowColor = s.c; ctx.shadowBlur = glowFX(10);
+        ctx.beginPath();
+        ctx.moveTo(0, -sz); ctx.lineTo(sz * 0.26, -sz * 0.26); ctx.lineTo(sz, 0); ctx.lineTo(sz * 0.26, sz * 0.26);
+        ctx.lineTo(0, sz); ctx.lineTo(-sz * 0.26, sz * 0.26); ctx.lineTo(-sz, 0); ctx.lineTo(-sz * 0.26, -sz * 0.26);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      }
     }
     ctx.globalAlpha = 1;
   },
@@ -257,15 +275,22 @@ export const FlyCoins = {
   },
   draw(): void {
     const { ctx } = view;
+    const low = fx.level === 'low';
+    if (!low) { ctx.shadowColor = '#ffb020'; ctx.shadowBlur = glowFX(8); }
     for (const c of this.a) {
       if (c.t < c.delay) continue;
       const w = Math.abs(Math.cos(c.rot)) * c.sz + 1.6;
-      ctx.save(); ctx.translate(c.x, c.y);
-      ctx.fillStyle = '#ffcf3a'; ctx.shadowColor = '#ffb020'; ctx.shadowBlur = glowFX(8);
-      ctx.beginPath(); ctx.ellipse(0, 0, w, c.sz, 0, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.ellipse(-w * 0.18, -c.sz * 0.18, w * 0.5, c.sz * 0.5, 0, 0, TAU); ctx.fill();
-      ctx.restore();
+      ctx.fillStyle = '#ffcf3a';
+      ctx.beginPath();
+      if (low) ctx.arc(c.x, c.y, Math.max(2, c.sz * 0.62), 0, TAU);
+      else ctx.ellipse(c.x, c.y, w, c.sz, 0, 0, TAU);
+      ctx.fill();
+      if (low) continue;
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#fff3b0'; ctx.beginPath(); ctx.ellipse(c.x - w * 0.18, c.y - c.sz * 0.18, w * 0.5, c.sz * 0.5, 0, 0, TAU); ctx.fill();
+      ctx.shadowBlur = glowFX(8);
     }
+    ctx.shadowBlur = 0;
   },
   clear(): void { this.a.length = 0; },
 };

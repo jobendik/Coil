@@ -1,6 +1,6 @@
 import { settings, setMuted } from '../settings';
 import { Store } from './store';
-import { LEADERBOARDS_ENABLED, LEADERBOARD_ID } from '../config';
+import { LEADERBOARDS_ENABLED, LEADERBOARD_ID, DAILY_LEADERBOARD_ID } from '../config';
 
 /**
  * Defensive CrazyGames v3 SDK wrapper. Every call is guarded so the game is
@@ -86,6 +86,15 @@ class CGState {
   submitHeight(h: number): void {
     if (!LEADERBOARDS_ENABLED || !this.ready) return;
     try { this.sdk?.leaderboards?.submitScore?.(LEADERBOARD_ID, h); } catch { /* no-op */ }
+  }
+
+  /** Submit a Daily Ascent best-of-day to the (invite-only) daily leaderboard.
+   *  M7 wire-point: dormant until invited, then the shared-seed board + honest
+   *  "Top X%" percentile light up with zero further work. Never faked before
+   *  real data exists (coil-retention-plan.md M7 / hard-NO list). */
+  submitDaily(h: number): void {
+    if (!LEADERBOARDS_ENABLED || !this.ready) return;
+    try { this.sdk?.leaderboards?.submitScore?.(DAILY_LEADERBOARD_ID, h); } catch { /* no-op */ }
   }
 
   private mute(): void {

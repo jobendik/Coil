@@ -80,6 +80,11 @@ export const P = {
       const al = clamp(p.life / p.max, 0, 1);
       ctx.globalAlpha = al;
       ctx.fillStyle = p.c;
+      if (fx.level === 'low') {
+        const s = Math.max(1, p.sz * al);
+        ctx.fillRect(p.x - s * 0.5, p.y - s * 0.5, s, s);
+        continue;
+      }
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.sz * al, 0, TAU);
       ctx.fill();
