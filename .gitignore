@@ -30,3 +30,7 @@ tools/.layout-preview
 
 # Throwaway dev-mode bundle used by the perf harness (tools/perf.mjs)
 dist-calib
+
+# CrazyGames upload build — regenerable via `npm run build:cg` (see CRAZYGAMES.md).
+# The media assets in crazygames/ ARE committed; this build output is not.
+crazygames/version1
