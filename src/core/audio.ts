@@ -52,14 +52,23 @@ export function tone(
   o.stop(t + d + 0.02);
 }
 
+const _noiseBufs: Record<number, AudioBuffer> = {};
 export function noise(d = 0.18, vol = 0.22, lp = 1600): void {
   if (settings.muted) return;
   const a = ac();
   if (!a) return;
   const n = Math.floor(a.sampleRate * d);
-  const b = a.createBuffer(1, n, a.sampleRate);
-  const dd = b.getChannelData(0);
-  for (let i = 0; i < n; i++) dd[i] = (Math.random() * 2 - 1) * (1 - i / n);
+  // Cache the decaying-noise buffer by sample count: it's random noise with a
+  // fixed decay envelope, so reusing one buffer across many BufferSourceNodes is
+  // imperceptible and skips the per-call allocation + n-sample fill loop (a GC
+  // spike on the sample-missing fallback path). A buffer may back many sources.
+  let b = _noiseBufs[n];
+  if (!b) {
+    b = a.createBuffer(1, n, a.sampleRate);
+    const dd = b.getChannelData(0);
+    for (let i = 0; i < n; i++) dd[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    _noiseBufs[n] = b;
+  }
   const s = a.createBufferSource();
   s.buffer = b;
   const g = a.createGain();

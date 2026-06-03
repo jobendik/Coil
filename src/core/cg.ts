@@ -116,7 +116,11 @@ class CGState {
   private resume(): void {
     setMuted(this.wasMuted);
     this.adActive = false;
-    this.pauseHook?.(false);
+    // If the tab was backgrounded while the ad played, DON'T un-pause into a hidden
+    // tab (it'd run the loop/physics/music invisibly). Stay paused; the
+    // visibilitychange handler resumes cleanly when the tab is shown again.
+    const hidden = typeof document !== 'undefined' && document.hidden;
+    this.pauseHook?.(hidden);
   }
 
   /** midgame interstitial — always continues even with adblock / no SDK. */

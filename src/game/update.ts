@@ -488,6 +488,11 @@ function predictDoom(): boolean {
     if (x > fr - pl.r) { x = fr - pl.r; vx = -Math.abs(vx) * WALL; }
     for (const n of G.nodes) {
       if (n.type === 'spike') continue;
+      // Vertical fast-reject: a node farther than the max catch reach in y can't be
+      // caught at this simulated y regardless of its x, so skip the hypot (and the
+      // moving-node sin()). Result-identical — the fall re-checks it once y comes
+      // within range. 64 > max(n.r) + pl.r + CATCH_PAD.
+      if (n.wy > y + 64 || n.wy < y - 64) continue;
       if (n === pl.lastReleased && i < 16) continue;   // matches the 0.25 s re-catch lockout
       const nx = n.type === 'move'
         ? n.baseX + Math.sin((G.t + i * dt) * (n.spd ?? 1) + (n.ph ?? 0)) * (n.amp ?? 0)
