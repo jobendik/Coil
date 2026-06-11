@@ -6,6 +6,7 @@ import { Career } from '../game/career';
 import { SEASON_TIERS, seasonReward, eliteReward, CAREER_MILESTONES } from '../config';
 import { clamp, glowFX, hexA, lerp, rr, text, TAU } from '../core/utils';
 import { btn } from '../core/ui';
+import { SFX } from '../core/audio';
 import { drawBG, dimVoid } from './play';
 
 /* =========================================================================
@@ -37,6 +38,9 @@ export function openSeason(origin: 'home' | 'over' = 'home'): void {
   scroll.y = scroll.target;
   scroll.dragging = false;
   scroll.moved = 0;
+  // gentle arrival beat — every other meta screen has one; the ledger shouldn't
+  // feel like a dead end (kept soft: it's a reading screen, not a celebration)
+  SFX.riser(0.22);
 }
 
 /* ---- input hooks (wired from main.ts; active only while scene === 'season') ---- */

@@ -13,7 +13,7 @@ import { SFX } from '../core/audio';
 import { glowFX, TAU, clamp, rr, text, hexA, mixHex } from '../core/utils';
 import { btn, resetButtons } from '../core/ui';
 import { Telemetry } from '../core/telemetry';
-import { drawBG, drawTopToggles, drawAccessoryAt } from './play';
+import { drawBG, drawTopToggles, drawAccessoryAt, drawIconBtn } from './play';
 import { Wheel, Chest } from '../game/rewards';
 import { overlayKind, openOverlay, drawOverlay, maybeAutoOpenLogin } from './overlays';
 import { MILESTONES, SEASON_TIERS, SKINS } from '../config';
@@ -752,6 +752,20 @@ export function homeLayout(firstSession = false): HomeLayout {
   };
 }
 
+/* "?" button — opens the HOW TO PLAY overlay. Drawn here (not in drawTopToggles)
+   because overlays.ts imports from play.ts, so play.ts can't open an overlay
+   without an import cycle. Geometry mirrors drawTopToggles' left cluster: it
+   takes the third slot on home's second toggle row (after CB-gate + echo). */
+function drawHelpBtn(): void {
+  const { SAFE_TOP } = view;
+  const s = topIconSize();
+  const step = s + Math.round(s * 0.19);
+  const x = 12 + 2 * step;
+  const y = 12 + SAFE_TOP + step;
+  btn('help', x, y, s, s, () => openOverlay('help'));
+  drawIconBtn(x, y, s, 'help', '#ffd24a');
+}
+
 export function renderHome(dt: number): void {
   const { ctx, W } = view;
   homeT += dt;
@@ -787,6 +801,7 @@ export function renderHome(dt: number): void {
     text('PLAY', cx, pyy + ph / 2, 26 * S, '#04030a', 800, 0, 'center', "'Unbounded'");
     btn('play', pxx, pyy, pw, ph, () => onPlayRequested());
     drawTopToggles();
+    drawHelpBtn();
     return;
   }
 
@@ -966,6 +981,7 @@ export function renderHome(dt: number): void {
 
   drawRewardIcons();
   drawTopToggles();
+  drawHelpBtn();
 
   if (!loginOffered) {
     loginOffered = true;

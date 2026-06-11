@@ -145,6 +145,7 @@ clear, accurate copy.
 
 - **Tap / Click / Space / Enter / ↑** — release & fling. Time your release for the
   bright center to land a PERFECT and build your combo.
+- **Esc / P** — pause (desktop).
 - That's it. State the one-button simplicity explicitly; it's a selling point.
 
 ---
