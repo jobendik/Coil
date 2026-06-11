@@ -1364,7 +1364,7 @@ function drawComboFlash(): void {
   ctx.restore();
 }
 
-function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff' | 'cb' | 'echo' | 'echoOff', col: string): void {
+export function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | 'music' | 'musicOff' | 'aim' | 'motion' | 'motionOff' | 'cb' | 'echo' | 'echoOff' | 'help', col: string): void {
   const { ctx } = view;
   ctx.save();
   rr(x, y, s, s, 10);
@@ -1445,6 +1445,18 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
       ctx.lineTo(cx + Math.cos(a) * 9, cy + Math.sin(a) * 9);
       ctx.stroke();
     }
+  } else if (icon === 'help') {
+    // question mark — "how to play"
+    ctx.beginPath();
+    ctx.arc(cx, cy - 3, 4.5, Math.PI * 0.85, Math.PI * 2.25);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + 2.6, cy + 0.4);
+    ctx.lineTo(cx + 0.6, cy + 3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx + 0.4, cy + 7.5, 1.5, 0, TAU);
+    ctx.fill();
   } else if (icon === 'echo' || icon === 'echoOff') {
     // two trailing orbs = "race your ghost"; slash = off
     ctx.beginPath(); ctx.arc(cx + 3, cy, 4, 0, TAU); ctx.fill();
@@ -1461,6 +1473,14 @@ function drawIconBtn(x: number, y: number, s: number, icon: 'sound' | 'mute' | '
   ctx.restore();
 }
 
+// Transient caption naming the setting just toggled — the icons are unlabeled,
+// so this is what tells the player WHICH preference they changed (and to what).
+const togNote = { txt: '', until: 0 };
+function noteToggle(txt: string): void {
+  togNote.txt = txt;
+  togNote.until = performance.now() + 1600;
+}
+
 export function drawTopToggles(): void {
   const { SAFE_TOP } = view;
   // Shared corner-icon size (42px on ≥375-wide screens; shrinks on narrower phones
@@ -1472,19 +1492,31 @@ export function drawTopToggles(): void {
   const pad = 12;
   const top = pad + SAFE_TOP;
   // SFX mute
-  btn('mute', pad, top, s, s, () => setMuted(!settings.muted));
+  btn('mute', pad, top, s, s, () => {
+    setMuted(!settings.muted);
+    noteToggle('SOUND ' + (settings.muted ? 'OFF' : 'ON'));
+  });
   drawIconBtn(pad, top, s, settings.muted ? 'mute' : 'sound', settings.muted ? '#5b6488' : '#2ff3e0');
   // music mute (independent of SFX)
   const xMusic = pad + step;
-  btn('music', xMusic, top, s, s, () => setMusicMuted(!settings.musicMuted));
+  btn('music', xMusic, top, s, s, () => {
+    setMusicMuted(!settings.musicMuted);
+    noteToggle('MUSIC ' + (settings.musicMuted ? 'OFF' : 'ON'));
+  });
   drawIconBtn(xMusic, top, s, settings.musicMuted ? 'musicOff' : 'music', settings.musicMuted ? '#5b6488' : '#ffd24a');
   // QA toggle: trajectory preview on/off (the glowing gate always stays on)
   const x2 = pad + 2 * step;
-  btn('aim', x2, top, s, s, () => setAimPreview(!settings.aimPreview));
+  btn('aim', x2, top, s, s, () => {
+    setAimPreview(!settings.aimPreview);
+    noteToggle('AIM PREVIEW ' + (settings.aimPreview ? 'ON' : 'OFF'));
+  });
   drawIconBtn(x2, top, s, 'aim', settings.aimPreview ? '#2ff3e0' : '#5b6488');
   // Reduced Motion toggle — comfort + accessibility (softens shake/flash/vignette)
   const x3 = pad + 3 * step;
-  btn('motion', x3, top, s, s, () => setReducedMotion(!settings.reducedMotion));
+  btn('motion', x3, top, s, s, () => {
+    setReducedMotion(!settings.reducedMotion);
+    noteToggle('REDUCED MOTION ' + (settings.reducedMotion ? 'ON' : 'OFF'));
+  });
   drawIconBtn(x3, top, s, settings.reducedMotion ? 'motionOff' : 'motion',
     settings.reducedMotion ? '#5b6488' : '#a76bff');
   // Home-only accessibility/preference toggles (colour-blind gate + Echo ghost).
@@ -1492,14 +1524,30 @@ export function drawTopToggles(): void {
   // height HUD in-play, nor with the top-right reward cluster on home.
   if (state.scene === 'home') {
     const row2 = top + step;
-    btn('cbgate', pad, row2, s, s, () => setCbGate(!settings.cbGate));
+    btn('cbgate', pad, row2, s, s, () => {
+      setCbGate(!settings.cbGate);
+      noteToggle('COLOR-BLIND GATE ' + (settings.cbGate ? 'ON' : 'OFF'));
+    });
     drawIconBtn(pad, row2, s, 'cb', settings.cbGate ? '#9be35a' : '#5b6488');
     // Echo ghost toggle — the doc requires an opt-out for players who find the
     // racing ghost distracting (M5).
     const ex = pad + step;
-    btn('echo', ex, row2, s, s, () => setEchoVisible(!settings.echoVisible));
+    btn('echo', ex, row2, s, s, () => {
+      setEchoVisible(!settings.echoVisible);
+      noteToggle('BEST-RUN GHOST ' + (settings.echoVisible ? 'ON' : 'OFF'));
+    });
     drawIconBtn(ex, row2, s, settings.echoVisible ? 'echo' : 'echoOff',
       settings.echoVisible ? '#2ff3e0' : '#5b6488');
+  }
+  // the caption sits under the deepest toggle row, fading over its last 0.4 s
+  const remain = togNote.until - performance.now();
+  if (remain > 0 && togNote.txt) {
+    const { ctx } = view;
+    const rows = state.scene === 'home' ? 2 : 1;
+    ctx.save();
+    ctx.globalAlpha = clamp(remain / 400, 0, 1);
+    text(togNote.txt, pad + 2, top + rows * step + 10, 9.5, '#9fb0e0', 800, 4, 'left', "'Unbounded'");
+    ctx.restore();
   }
 }
 
@@ -1701,7 +1749,8 @@ function drawMeters(): void {
     const fw = 170;
     const fx2 = W / 2 - fw / 2;
     const fy = 90 + SAFE_TOP;
-    const fb = 1 + Math.sin(G.t * 16) * 0.04;
+    // banner heartbeat — scaled by fx.motion so Reduced Motion stills it
+    const fb = 1 + Math.sin(G.t * 16) * 0.04 * fx.motion;
     ctx.save();
     ctx.translate(W / 2, fy + 10);
     ctx.scale(fb, fb);
@@ -1892,7 +1941,7 @@ export function renderPlay(): void {
     rr(bx, by, bw, bh, 9);
     ctx.fillStyle = 'rgba(20,16,48,.78)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(149,227,90,.5)';
+    ctx.strokeStyle = 'rgba(155,227,90,.75)';
     ctx.lineWidth = 1.4;
     ctx.stroke();
     text('✦ DONE', bx + bw / 2, by + bh / 2, 12, '#9be35a', 800, 0, 'center', "'Unbounded'");
@@ -1918,4 +1967,19 @@ export function dimVoid(a: number): void {
   const { ctx, W, H } = view;
   ctx.fillStyle = `rgba(6,4,16,${a})`;
   ctx.fillRect(0, 0, W, H);
+}
+
+/* Player-initiated pause (desktop: ESC / P — main.ts owns the state). Drawn over
+   the frozen play frame. Tap / any pause key resumes, so the overlay doubles as
+   the resume button on every input type. */
+export function renderPauseOverlay(t: number): void {
+  const { ctx, W, H } = view;
+  dimVoid(0.66);
+  const cy = H * 0.42;
+  text('PAUSED', W / 2, cy, 26, '#fff', 800, 14, 'center', "'Unbounded'");
+  const a = 0.55 + 0.25 * Math.sin(t * 2.4) * fx.motion;
+  ctx.save();
+  ctx.globalAlpha = a;
+  text('TAP OR PRESS ESC TO RESUME', W / 2, cy + 34, 11, '#9fb0e0', 700, 0);
+  ctx.restore();
 }

@@ -6,7 +6,7 @@ import { update, release, requestRevive, endRun } from './game/update';
 import { P, Pop, shakeState, updateShake } from './core/particles';
 import { Result, setReplayHandler, setReviveHandler } from './scenes/result';
 import { renderHome, setPlayHandler, setDailyHandler, setZenHandler } from './scenes/home';
-import { renderPlay, setZenExitHandler } from './scenes/play';
+import { renderPlay, renderPauseOverlay, setZenExitHandler } from './scenes/play';
 import { renderShop, shopDown, shopMove, shopUp, shopResetScroll, shopBackScene } from './scenes/shop';
 import { renderAscent, ascentDown, ascentMove, ascentUp, setAscentReplay, openAscent } from './scenes/ascent';
 import { renderSeason, seasonDown, seasonMove, seasonUp } from './scenes/season';
@@ -61,9 +61,31 @@ if (window.visualViewport) {
 }
 
 /* ---------- play / replay / revive flow ---------- */
-let paused = false;
+let paused = false;       // system pause: ad overlay or hidden tab (loop fully stops)
+// Player-initiated pause (desktop ESC / P). Kept separate from `paused` so the
+// visibilitychange handler can't silently cancel it, and so we can keep rendering
+// the frozen play frame + PAUSED overlay instead of freezing the canvas.
+let userPaused = false;
+let userPauseT = 0;
+
+function setUserPaused(p: boolean): void {
+  if (p === userPaused) return;
+  // Only the live game can be paused — menus are already "paused".
+  if (p && (state.scene !== 'play' || state.G.dead || CG.adActive)) return;
+  userPaused = p;
+  userPauseT = 0;
+  if (p) {
+    Music.pause();
+    CG.gameplayStop();    // a real in-game break per CrazyGames SDK guidance
+  } else {
+    last = performance.now();
+    acc = 0;              // Music resumes via its per-frame fade
+    CG.gameplayStart();
+  }
+}
 
 function startPlay(daily = false, zen = false): void {
+  userPaused = false;
   resetRun(daily, zen);
   maybeShowStartToast();
   Telemetry.runStart(daily);
@@ -154,6 +176,12 @@ function onDown(e: PointerEvent): void {
   Music.start();
   loadSamples();
   e.preventDefault();
+  // While player-paused, the whole screen is the resume button — swallow the tap
+  // so it can't double as a fling.
+  if (userPaused) {
+    setUserPaused(false);
+    return;
+  }
   if (inputLock) return;
   inputLock = true;
   setTimeout(() => { inputLock = false; }, 40);
@@ -214,12 +242,22 @@ view.cv.addEventListener('pointerup', (e) => {
 }, { passive: false });
 
 // Desktop keyboard (CrazyGames has heavy desktop traffic): Space / Enter / ArrowUp
+// to act, ESC / P to pause-resume the live run.
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' || e.code === 'KeyP') {
+    e.preventDefault();
+    setUserPaused(!userPaused);
+    return;
+  }
   if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowUp') {
     e.preventDefault();
     ac();
     Music.start();
     loadSamples();
+    if (userPaused) {
+      setUserPaused(false);
+      return;
+    }
     if (inputLock) return;
     inputLock = true;
     setTimeout(() => { inputLock = false; }, 40);
@@ -262,6 +300,22 @@ function step(now: number): void {
   last = now;
   if (dt > 0.25) dt = 0.25;
   if (dt < 0) dt = 0;
+
+  // Player pause: no updates, no buttons — just the frozen play frame under a
+  // PAUSED overlay, re-rendered each frame so resizes/safe-area changes hold up.
+  if (userPaused) {
+    if (state.scene !== 'play') { userPaused = false; }
+    else {
+      userPauseT += dt;
+      resetButtons();
+      const { ctx, W, H } = view;
+      ctx.clearRect(0, 0, W, H);
+      renderPlay();
+      P.draw();
+      renderPauseOverlay(userPauseT);
+      return;
+    }
+  }
 
   resetButtons();
 

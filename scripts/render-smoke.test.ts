@@ -12,8 +12,9 @@
    ========================================================================= */
 import { state, resetRun } from '../src/game/state';
 import { update } from '../src/game/update';
-import { renderPlay } from '../src/scenes/play';
+import { renderPlay, renderPauseOverlay } from '../src/scenes/play';
 import { renderHome } from '../src/scenes/home';
+import { openOverlay, closeOverlay, drawOverlay } from '../src/scenes/overlays';
 import { view, initCanvas, resize } from '../src/core/canvas';
 import { fx } from '../src/core/utils';
 
@@ -63,12 +64,20 @@ state.G.comboFlashColor = '#2ff3e0';
 frame('play (first — cache fill)', () => renderPlay());
 frame('play (second — cache hit)', () => renderPlay());
 
+// PAUSE overlay (drawn over the frozen play frame by main.ts).
+frame('pause overlay', () => { renderPlay(); renderPauseOverlay(0.5); });
+
 // HOME for broader coverage of the meta render path.
 state.scene = 'home';
 frame('home', () => renderHome(1 / 60));
 
+// HOW-TO-PLAY overlay (modal over home).
+openOverlay('help');
+frame('help overlay', () => drawOverlay(1 / 60));
+closeOverlay();
+
 if (failures === 0) {
-  console.log('render-smoke: ✓ play + home render cleanly with balanced ctx save/restore');
+  console.log('render-smoke: ✓ play + home + pause/help overlays render cleanly with balanced ctx save/restore');
 } else {
   console.error(`  ${failures} render-smoke failures`);
   process.exit(1);

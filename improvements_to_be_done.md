@@ -11,6 +11,38 @@
 
 ---
 
+## Progress update — branch `claude/game-polish-refinement-6jisqn` (2026-06-11)
+
+Production-polish pass (code-only; `tsc` clean, all 8 tests green incl. the
+extended render-smoke):
+
+- **Desktop pause — DONE.** ESC / P pauses the live run (CrazyGames desktop
+  traffic had no way to pause at all). Player pause is a separate flag from the
+  ad/tab-hidden system pause so neither can clobber the other; it fires the SDK's
+  `gameplayStop`/`gameplayStart` (a real in-game break per CG guidance), pauses
+  music, and renders a PAUSED overlay over the frozen play frame. Tap or any
+  pause/action key resumes; mobile is untouched (no new tap surface in-run).
+- **HOW TO PLAY overlay — DONE** (closes the audit's "no instructions surface
+  outside the one-shot in-run tutorial" gap). A "?" icon joins the home toggle
+  cluster and opens a modal with three illustrated rows (orbit→tap, the bright
+  perfect arc, the rising void) drawn in the game's real colours, plus desktop
+  key hints. Reuses the overlays.ts modal framework (panel/absorber/actionButton).
+- **Settings-toggle captions — DONE.** The icon-only toggles now flash a short
+  caption naming what changed ("REDUCED MOTION ON", "MUSIC OFF", …) under the
+  cluster — previously the only feedback was an icon tint swap.
+- **Reduced-motion compliance fix.** The FRENZY banner heartbeat ignored
+  `fx.motion`; it now stills under Reduced Motion like every other pulse.
+- **Overlay layout fix.** The "Ad unavailable" line was pinned at `H*0.9`, which
+  lands ON the panel's action buttons on screens shorter than ~575 px; it now
+  anchors just below the panel.
+- **Season screen arrival beat** (soft riser) — it was the only meta screen with
+  zero entry feedback. **Zen DONE button** stroke fixed (the rgba didn't match
+  `#9be35a` and was half-strength → low contrast).
+- **Render-smoke extended** to cover the pause + help overlays (throw-free,
+  balanced save/restore), so the new surfaces are CI-guarded like the rest.
+
+---
+
 ## Progress update — branch `claude/elegant-brown-r5Hmy` (2026-06-01)
 
 Shipped (code-only; verified `tsc` clean, all tests green incl. gate-honesty with

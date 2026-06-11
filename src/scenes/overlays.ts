@@ -20,7 +20,7 @@ import { dimVoid } from './play';
    do nothing instead of leaking through.
    ========================================================================= */
 
-export type Overlay = 'none' | 'login' | 'wheel' | 'chest' | 'weekly';
+export type Overlay = 'none' | 'login' | 'wheel' | 'chest' | 'weekly' | 'help';
 
 const ov = {
   kind: 'none' as Overlay,
@@ -567,6 +567,83 @@ function drawWeekly(): void {
   absorber();
 }
 
+/* ----------------------------------- HELP -----------------------------------
+   "How to play" — a reviewable home-screen surface for the rules the one-shot
+   in-run tutorial teaches. Three illustrated rows, drawn with the game's real
+   colours so each diagram matches what the player will actually see in-run. */
+function drawHelp(): void {
+  const { ctx, W, S } = view;
+  const p = drawPanel();
+  const cx = W / 2;
+  text('HOW TO PLAY', cx, p.y + 34 * S, 21 * S, '#fff', 800, 12, 'center', "'Unbounded'");
+  text('One tap. Perfect timing. Endless climb.', cx, p.y + 58 * S, 10.5 * S, '#9fb0e0', 700, 0);
+
+  const rows: Array<{ glyph: 'orbit' | 'gate' | 'void'; head: string; body: string }> = [
+    { glyph: 'orbit', head: 'TAP TO FLING',     body: 'You orbit a gate — tap to launch upward.' },
+    { glyph: 'gate',  head: 'HIT THE BRIGHT ARC', body: 'Release inside it for a PERFECT — chain combos.' },
+    { glyph: 'void',  head: 'OUTRUN THE VOID',  body: 'It rises forever. Catch any gate to keep climbing.' },
+  ];
+  const listTop = p.y + 84 * S;
+  const listBot = p.y + p.h - 104 * S;
+  const rowH = (listBot - listTop) / rows.length;
+  const gx = p.x + 46 * S;             // glyph centre
+  const tx = p.x + 84 * S;             // text column
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const y = listTop + i * rowH + rowH / 2;
+    ctx.save();
+    ctx.lineCap = 'round';
+    if (r.glyph === 'orbit') {
+      // node + orbiting orb (animated, like the real orbit)
+      ctx.strokeStyle = 'rgba(255,255,255,.25)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(gx, y, 16 * S, 0, TAU); ctx.stroke();
+      ctx.fillStyle = '#ffd24a';
+      ctx.shadowColor = '#ffd24a';
+      ctx.shadowBlur = glowFX(8);
+      ctx.beginPath(); ctx.arc(gx, y, 5 * S, 0, TAU); ctx.fill();
+      const a = ov.t * 2.7;
+      ctx.fillStyle = '#2ff3e0';
+      ctx.shadowColor = '#2ff3e0';
+      ctx.beginPath(); ctx.arc(gx + Math.cos(a) * 16 * S, y + Math.sin(a) * 16 * S, 4 * S, 0, TAU); ctx.fill();
+    } else if (r.glyph === 'gate') {
+      // dim ring with the bright "perfect" arc, exactly like the in-run gate
+      ctx.strokeStyle = 'rgba(255,255,255,.22)';
+      ctx.lineWidth = 3 * S;
+      ctx.beginPath(); ctx.arc(gx, y, 15 * S, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = '#ffd24a';
+      ctx.shadowColor = '#ffd24a';
+      ctx.shadowBlur = glowFX(10);
+      ctx.lineWidth = 4 * S;
+      const pu = 0.5 + 0.5 * Math.sin(ov.t * 4);
+      ctx.globalAlpha = 0.7 + pu * 0.3;
+      ctx.beginPath(); ctx.arc(gx, y, 15 * S, -Math.PI * 0.72, -Math.PI * 0.28); ctx.stroke();
+    } else {
+      // rising void: a red-hot band creeping up under a fleeing orb
+      const vw = 30 * S;
+      const vh = 26 * S;
+      const g = ctx.createLinearGradient(0, y + vh / 2, 0, y - vh * 0.1);
+      g.addColorStop(0, 'rgba(255,59,92,.9)');
+      g.addColorStop(1, 'rgba(255,59,92,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(gx - vw / 2, y - vh * 0.1, vw, vh * 0.6);
+      ctx.fillStyle = '#2ff3e0';
+      ctx.shadowColor = '#2ff3e0';
+      ctx.shadowBlur = glowFX(8);
+      const bob = Math.sin(ov.t * 3) * 2 * S;
+      ctx.beginPath(); ctx.arc(gx, y - vh * 0.32 + bob, 4 * S, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+    text(r.head, tx, y - 8 * S, 11.5 * S, '#fff', 800, 0, 'left', "'Unbounded'");
+    text(r.body, tx, y + 9 * S, 10 * S, '#9fb0e0', 600, 0, 'left');
+  }
+
+  text('DESKTOP  ·  SPACE to fling  ·  ESC / P to pause', cx, p.y + p.h - 80 * S, 9.5 * S, '#7e88b5', 700, 0);
+  const bw = p.w * 0.6;
+  actionButton('helpok', cx - bw / 2, p.y + p.h - 62 * S, bw, 48 * S, 'GOT IT', '#2ff3e0', '#04130f', () => closeOverlay());
+  absorber();
+}
+
 export function drawOverlay(dt: number): void {
   if (ov.kind === 'none') return;
   ov.t += dt;
@@ -581,10 +658,14 @@ export function drawOverlay(dt: number): void {
   else if (ov.kind === 'wheel') drawWheel(dt);
   else if (ov.kind === 'chest') drawChest(dt);
   else if (ov.kind === 'weekly') drawWeekly();
-  // transient "ad unavailable" feedback so a failed rewarded tap isn't silent
+  else if (ov.kind === 'help') drawHelp();
+  // transient "ad unavailable" feedback so a failed rewarded tap isn't silent.
+  // Anchored just BELOW the panel — a fixed H*0.9 sat on top of the panel's
+  // action buttons on short screens (panel bottom reaches H*0.78).
   if (ov.adMsgT > 0) {
     ov.adMsgT -= dt;
-    const { W, H } = view;
-    text('Ad unavailable — please try again', W / 2, H * 0.9, 12, '#ff9b50', 700, 6);
+    const { W } = view;
+    const p = panel();
+    text('Ad unavailable — please try again', W / 2, p.y + p.h + 22, 12, '#ff9b50', 700, 6);
   }
 }
